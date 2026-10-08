@@ -64,6 +64,14 @@ public static class SyntheticImportEndpoints
             })));
     }
 
+    // Only the isolated rehearsal module calls this. It never writes attachment bytes.
+    internal static ImportReport Simulate(Study detachedBranch, JsonElement manifest, AttachmentStorage files, bool apply)
+    {
+        var plan = Plan(detachedBranch, manifest, files, simulation: true);
+        if (apply) { Apply(detachedBranch, plan, files, writeBlobs: false); detachedBranch.Revision++; }
+        return Report(detachedBranch, plan, null, false);
+    }
+
     sealed class Candidate(JsonElement source, string sourceId, string targetId)
     {
         public JsonElement Source = source;
@@ -79,7 +87,7 @@ public static class SyntheticImportEndpoints
     }
     sealed record ImportPlan(string Fingerprint, List<Candidate> Candidates);
 
-    static ImportPlan Plan(Study study, JsonElement manifest, AttachmentStorage files)
+    static ImportPlan Plan(Study study, JsonElement manifest, AttachmentStorage files, bool simulation = false)
     {
         ValidateManifest(manifest);
         var candidates = new List<Candidate>();
@@ -193,7 +201,7 @@ public static class SyntheticImportEndpoints
                         : existing is null || existing.Deleted || TargetFingerprint(study, existing.TargetId, existing.Kind) != existing.TargetFingerprint;
                     if (reference == c.SourceId || unavailable || targetId is null) c.Reasons.Add("unavailable_relationship:" + reference);
                     else if ((kind is "version" or "attachment") && (incoming is null || incoming.Status is "unchanged" or "stale_ignored") &&
-                        !study.Files.Any(f => f.Id == targetId && EvidenceRules.FileAvailable(study, f.Id, files))) c.Reasons.Add("unavailable_file_relationship:" + reference);
+                        !study.Files.Any(f => f.Id == targetId && (simulation ? !f.Deleted && f.Status == "DemoReleased" && (f.ParentId is null || EvidenceRules.ItemAvailable(study, f.ParentId)) : EvidenceRules.FileAvailable(study, f.Id, files)))) c.Reasons.Add("unavailable_file_relationship:" + reference);
                     else if (sourceStudy != c.SourceStudyId) c.Reasons.Add("cross_study_relationship:" + reference);
                     else if (reference == c.Parent && !AllowedParent(c.Kind, kind)) c.Reasons.Add("invalid_parent_kind:" + reference);
                 }
@@ -211,7 +219,7 @@ public static class SyntheticImportEndpoints
         return new(Hash(manifest), candidates);
     }
 
-    static void Apply(Study study, ImportPlan plan, AttachmentStorage files)
+    static void Apply(Study study, ImportPlan plan, AttachmentStorage files, bool writeBlobs = true)
     {
         var byId = plan.Candidates.ToDictionary(c => c.SourceId);
         string Target(string source) => byId.TryGetValue(source, out var c) ? c.TargetId : study.ImportLedger[source].TargetId;
@@ -236,7 +244,7 @@ public static class SyntheticImportEndpoints
                 if (c.Kind is "version" or "attachment")
                 {
                     // Bytes are immutable. A source binary change must use a new source version ID.
-                    try { files.WriteBlob(c.TargetId, c.Bytes!); }
+                    try { if (writeBlobs) files.WriteBlob(c.TargetId, c.Bytes!); }
                     catch (InvalidDataException) { throw new IOException("Immutable import blob integrity conflict."); }
                     var version = c.Kind == "version" ? c.Source.GetProperty("version_number").GetInt32() : 1;
                     var file = new StoredFile(c.TargetId, c.Filename, AttachmentStorage.GetHash(c.Bytes!), c.Bytes!.Length,

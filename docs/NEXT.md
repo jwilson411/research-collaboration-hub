@@ -1,28 +1,29 @@
 # Next implementation steps
 
-## Next useful local milestone
+## Stabilize the morning preview
 
-The [requirements evidence matrix](REQUIREMENTS-MATRIX.md) is the basis for prioritization. Import exceptions now have owners, immutable review/disposition history and batch receipts; template definitions and resource pointer replacements retain exact versions; search now filters by study/type and exposes selected metadata. These local capabilities do not complete source inventory, organizational governance or production acceptance.
+The [requirements evidence matrix](REQUIREMENTS-MATRIX.md) now covers the core local study journey, synthetic administration/provisioning, exact-version documentation and resources, and bounded migration tools. The next priority is quality and a reproducible review packet, rather than more feature breadth.
 
-The next useful application seam is synthetic workspace provisioning with stable study identifiers, idempotent requests, validated group mapping and failure isolation (CAP-10). It must not introduce a membership roster, create directory groups or imply external study approval.
+- Freeze the intended commit and complete the relevant local regression suite, independent browser journey, launcher checks and publication content/history scan. Record exact results and remaining limitations in [VALIDATION.md](VALIDATION.md).
+- Rehearse one coherent walkthrough: fresh launch, study orientation, current protocol, conversation-to-decision/task, template/resource history, handoff, permission-aware search and historical continuation. Show new study provisioning and import tools as separate administrator actions.
+- Verify saved-workspace restart and the supported stopped synthetic recovery path. Keep new metadata-only migration branch reset clearly distinct from operational rollback or restored binary verification.
+- Review empty, failed, stale and interrupted states; keyboard/mobile navigation; direct historical links; and denied/revoked access. Keep the morning instructions short enough to follow without the original developer.
+- Deliver repository/commit, quick start, walkthrough, verified feature matrix and explicit deployment gaps. Loopback URLs work only on the computer running the app; they are not remote mobile preview links.
 
-In parallel planning, define source/target write ownership and rehearse migration rollback that protects target edits. Add source-link resolution and evidence that every in-scope source record is accounted for across batches; existing receipts cover submitted batches only (CAP-47–54). Search can extend to agreed owner/date filters and remaining metadata, with exact-link tests for renamed and migrated records (CAP-21, CAP-26–27, CAP-54). Structured milestones and blockers remain a coordination gap (CAP-02).
+## Further local work should follow evidence
 
-## Policy-dependent local rehearsals
+Study/type search filters and selected metadata are implemented; owner/date filters and broader agreed indexing remain optional improvements. Structured milestones/blockers, broader template governance, resource attestation policy and complete legacy-URL alias handling should follow representative workflow feedback rather than expanding the preview by default.
 
-- Define retention/hold semantics before building disposal; test mutation, import and cleanup paths together (CAP-39).
-- Define template review/retirement and resource verification responsibility before extending the local lead-managed catalog and contributor attestations (CAP-03, CAP-08).
-- Rehearse migration rollback separately from stopped JSON/blob backup restore (CAP-53).
-- Replace the synthetic release demonstration with an approved scanner/result lifecycle, quotas and reviewed orphan accounting only when its policy and execution boundary are available (CAP-22).
+Submitted-manifest inventory and isolated apply/abort/retry/delta/reset are demonstrations. They do not establish real source completeness, extraction fidelity, cutover write ownership or rollback that reconciles live target edits. Define and rehearse those against approved representative source material before making migration acceptance claims.
 
 ## Production gates that remain separate
 
 - Exercise the SQL snapshot adapter against an approved disposable SQL Server: concurrency, failure ambiguity, schema, restart and recovery. It remains a bounded single-row preview adapter; normalize entities before scale claims.
-- Implement the approved production identity adapter using stable group SIDs, authoritative membership, tested revocation/outage behavior and explicit IIS registration. Keep Production blocked meanwhile.
+- Implement the approved production identity adapter using stable group SIDs, authoritative membership and tested revocation/outage behavior. Keep Production blocked meanwhile; no shadow membership roster.
 - Validate Windows/IIS, application subpaths, persisted Data Protection keys, keyboard and screen-reader journeys, deployment rollback and operational recovery on the approved target.
+- Establish retention/hold and final-disposition semantics before building cleanup. Test ordinary mutations, imports, snapshots and cleanup together.
+- Approve the scanner/result lifecycle, quotas and orphan accounting before replacing the narrow synthetic release demonstration.
 
 ## Decisions needed from the deploying organization
 
-Confirm the production role and approval matrix, records/retention rules for removed and superseded content, approved malware scanning/release process, and migration-source scope with acceptance criteria. These choices cannot be inferred from a synthetic demonstration. Access to an approved Windows/IIS/domain and disposable SQL environment is also needed for the separate integration gates above.
-
-The repository remains a draft implementation. AI and messaging integrations stay disabled and are independent decisions. No current test establishes production or accessibility compliance.
+Confirm roles and approval authority, records policy, malware policy, migration scope and fidelity acceptance, service/recovery targets, sustainment ownership and the permitted integration environment. No local demonstration establishes these decisions or production/accessibility compliance. AI and messaging integrations remain disabled and independent of core study work.

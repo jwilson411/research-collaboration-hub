@@ -1,10 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 public record ConfigurationChange(int Revision, string Actor, string Action, string Target, string Before, string After, DateTimeOffset At);
 public record MappingInput(string StudyId, string GroupId, int ExpectedRevision, string RequestId);
 public record RoleInput(string Identity, string Role, int ExpectedRevision, string RequestId);
+public record StudyProvisioning(string DatasetKind,string Actor,DateTimeOffset CreatedAt,string InitialGroupId);
+public record ProvisionStudyInput(string StudyId,string Title,string Summary,string GroupId,int ExpectedRevision,string RequestId);
 public static class AdministrationEndpoints
 {
     public static void MapAdminEndpoints(this WebApplication app, Func<HttpContext,string> identity,
@@ -13,11 +16,30 @@ public static class AdministrationEndpoints
         app.MapGet("/api/admin", (HttpContext context,IStudyStore store) => store.Read<IResult>(state =>
             admin(state,identity(context)) ? Results.Ok(new {
                 configRevision=state.ConfigRevision, roles=state.Roles,
-                mappings=state.Studies.Select(study=>new {studyId=study.Id,groupId=study.GroupId}),
+                mappings=state.Studies.Select(study=>new {studyId=study.Id,groupId=study.GroupId,title=study.Title,stage=study.Stage,provisioning=study.Provisioning}),
                 audit=state.Audit, configurationHistory=state.ConfigurationHistory,
                 identities=Demo.Identities, groups=Demo.Groups,
                 effectiveAccess=Demo.Identities.Select(user=>new {identity=user.Id,studies=state.Studies.Where(study=>access(state,user.Id,study)).Select(study=>study.Id)})
             }) : Results.StatusCode(403)));
+        app.MapPost("/api/admin/studies", (ProvisionStudyInput input,HttpContext context,IStudyStore store)=>store.Change(state=> {
+            var actor=identity(context);
+            if(!admin(state,actor))return Results.StatusCode(403);
+            if(state.DatasetKind!="SyntheticDemo")return Results.Json(new {error="Study provisioning requires an explicitly marked synthetic demo dataset."},statusCode:503);
+            if(string.IsNullOrEmpty(input.StudyId)||input.StudyId.Length is <3 or >48||!Regex.IsMatch(input.StudyId,@"\A[a-z][a-z0-9]*(?:-[a-z0-9]+)*\z",RegexOptions.CultureInvariant)||
+                string.IsNullOrWhiteSpace(input.Title)||input.Title.Length>180||string.IsNullOrWhiteSpace(input.Summary)||input.Summary.Length>2000||
+                !new[]{"demo-group-a","demo-group-b"}.Contains(input.GroupId)||input.ExpectedRevision<1||!Guid.TryParse(input.RequestId,out _))
+                return Results.BadRequest(new {error="Provide a study ID of 3–48 lowercase letters, digits and single hyphens, starting with a letter; title (1–180); summary (1–2000); existing synthetic group; configuration revision; and request identifier."});
+            var fingerprint=Fingerprint("provision-study",input);
+            object receipt()=>new {studyId=input.StudyId,configRevision=state.ConfigRevision,initialStage="Paused",initialGroupId=input.GroupId};
+            if(state.ConfigRequests.TryGetValue(input.RequestId,out var prior))return prior==fingerprint?Results.Ok(receipt()):Results.Conflict(new {error="This request identifier already belongs to another configuration change."});
+            if(state.ConfigRevision!=input.ExpectedRevision)return Conflict();
+            if(state.Studies.Any(study=>string.Equals(study.Id,input.StudyId,StringComparison.OrdinalIgnoreCase)))return Results.Conflict(new {error="That study ID already exists. Choose a distinct ID; existing studies are never overwritten."});
+            var study=new Study {Id=input.StudyId,Title=input.Title.Trim(),Summary=input.Summary.Trim(),GroupId=input.GroupId,Stage="Paused",Revision=1,
+                Provisioning=new("SyntheticDemo",actor,DateTimeOffset.UtcNow,input.GroupId)};
+            state.Studies.Add(study);
+            Record(state,actor,"Provisioned synthetic study",study.Id,"Not provisioned","Paused; existing group "+input.GroupId,input.RequestId,fingerprint);
+            return Results.Ok(receipt());
+        }));
         app.MapPost("/api/admin/mapping", (MappingInput input,HttpContext context,IStudyStore store) => store.Change(state => {
             var actor=identity(context);
             if(!admin(state,actor))return Results.StatusCode(403);

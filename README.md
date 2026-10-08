@@ -71,3 +71,7 @@ Decision supersession, versioned templates and resource history: [walkthrough an
 Stopped synthetic JSON/blob backup and isolated restore: [recovery procedure](docs/RECOVERY.md).
 
 For a complete generic capability audit and next priorities, see the [requirements evidence matrix](docs/REQUIREMENTS-MATRIX.md). It distinguishes local implementation, demonstrations, disabled modules and missing capabilities.
+
+Synthetic paused-study creation: [provisioning guide](docs/PROVISIONING.md). Exact authorized historical links: [resolver scope](docs/MIGRATED-LINKS.md). Isolated metadata rehearsal and its limits: [migration guide](docs/MIGRATION.md).
+
+For a coherent researcher-to-administrator demo, follow the [morning preview walkthrough](docs/MORNING-PREVIEW.md).

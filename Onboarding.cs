@@ -50,7 +50,7 @@ public static class OnboardingEndpoints
         var progress=study.PersonalOnboarding.GetValueOrDefault(actor)??new();
         var steps=Steps(study,progress,storage);
         return new {revision=progress.Revision,studyRevision=study.Revision,studyStage=study.Stage,
-            contact=study.Id=="atlas"?"Riley · synthetic study lead":"Sam · synthetic study contact",steps,
+            contact=study.Id=="atlas"&&study.GroupId=="demo-group-a"?"Riley · synthetic study lead":study.Id=="beacon"&&study.GroupId=="demo-group-b"?"Sam · synthetic study contact":"Study contact not configured",steps,
             resumeStepId=steps.FirstOrDefault(step=>step.Available&&!step.Completed)?.Id};
     }
     static OrientationStep[] Steps(Study study,PersonalOrientation progress,AttachmentStorage storage)
