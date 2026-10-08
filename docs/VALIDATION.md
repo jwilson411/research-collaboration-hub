@@ -96,3 +96,10 @@ The stopped synthetic-demo rehearsal creates metadata and an attachment through 
 Independent static review prompted full-ancestor availability checks across study/search/document/download responses and evidence selection, protection of retained decision/document/protocol ancestors, Windows reparse-point rejection in recovery paths, and nullable serialization compatibility for earlier requests/import fingerprints/handoff digests. The offline recovery suite covers ten corruption, path, no-overwrite, archive accounting, interruption and refusal cases.
 
 Usability review and fixes are documented in [DECISIONS-RESOURCES.md](DECISIONS-RESOURCES.md). The later consolidation milestone resolves the observed long-scroll document-family limitation with native history disclosures. All source is synthetic; runtime state, archives, private screenshots and logs are excluded from publication.
+
+
+## USWDS component integration
+
+The component-focused Chromium journey passed ten selected desktop/mobile axe audits with zero violations, checked keyboard menu dismissal and focus return, skip navigation, checkbox persistence, field errors and summary links, accordion/history focus, enhanced file selection/upload, status alerts and narrow-screen reflow. It observed no page errors or external requests. Screenshots were visually reviewed locally and remain excluded from source publication. See [the component-to-screen audit](USWDS.md) for actual standard components and deliberate application compositions.
+
+The locked frontend dependency installation, local asset build and JavaScript syntax checks passed. The application build passed with zero warnings/errors; all 19 fake-connection storage protocol checks passed. The full browser journeys and server suite remain independent gates on the final candidate; these focused component results do not replace authorization, restart or session-context evidence. No Windows/IIS, live directory, live SQL Server, screen-reader acceptance or compliance claim is added.

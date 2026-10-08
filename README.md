@@ -51,6 +51,8 @@ Uploads are limited to 512 KiB decoded and 1 MiB requests. Allowed types are `.t
 
 `IStudyStore` also has a bounded SQL Server snapshot adapter with explicit schema setup and synthetic import command. It is not a normalized production data model, and was not tested against a live SQL Server here. See [storage](docs/STORAGE.md) and the [IIS deployment gate](docs/IIS.md).
 
+See [USWDS components and application composition](docs/USWDS.md) for the screen-to-component mapping, local asset build and deliberate native controls.
+
 ## Build and checks
 
 ```sh
@@ -62,7 +64,7 @@ dotnet build --no-restore
 python3 -m unittest discover -s tests -v
 ```
 
-The HTTP suites require `dotnet` on PATH (or set `DOTNET` to its executable), and exclusively own loopback port 5080. Stop the preview first. The browser smoke script runs against a disposable, already-running demo with a separately installed Playwright/Chromium; see its opening instructions. No hosted CI is configured.
+The HTTP suites require `dotnet` on PATH (or set `DOTNET` to its executable), and exclusively own loopback port 5080. Stop the preview first. The browser smoke script runs against a disposable, already-running demo with a separately installed Playwright/Chromium; see its opening instructions. The focused `tests/uswds-browser.mjs` journey checks actual USWDS behavior, keyboard focus and desktop/mobile layouts; set `HUB_BROWSER_AXE=true` for axe checks. No hosted CI is configured.
 
 See [feature matrix](docs/FEATURES.md), [synthetic migration rehearsal](docs/MIGRATION.md) and [next milestones](docs/NEXT.md). This preview is not production-ready or an accessibility compliance certification.
 

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {mkdir,readFile} from 'node:fs/promises';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const primaryNav=async(p,name)=>{const link=p.getByRole('link',{name,exact:true});if(!await link.isVisible())await p.getByRole('button',{name:'Menu',exact:true}).click();await link.click();};
 const base=process.env.HUB_BROWSER_URL||'http://127.0.0.1:5080';
 assert(['127.0.0.1','localhost','[::1]'].includes(new URL(base).hostname),'Use loopback only');
 const output=process.env.HUB_BROWSER_ARTIFACTS||'artifacts/milestone9-browser';await mkdir(output,{recursive:true});
@@ -17,7 +18,7 @@ const responseFor=suffix=>page.waitForResponse(r=>r.url().endsWith(suffix)&&r.re
 const reflow=async()=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390,'No horizontal page overflow');
 async function audit(label){await reflow();if(process.env.HUB_BROWSER_AXE==='true'){const AxeBuilder=require('@axe-core/playwright').default;const result=await new AxeBuilder({page}).analyze();assert.deepEqual(result.violations.map(v=>({id:v.id,targets:v.nodes.map(n=>n.target)})),[],label);console.log('AXE: '+label+' — 0 violations');}}
 try {
- await page.goto(base);await ready();await switchIdentity('admin');await page.getByRole('link',{name:'Administration',exact:true}).click();
+ await page.goto(base);await ready();await switchIdentity('admin');await primaryNav(page,'Administration');
  if(process.env.HUB_BROWSER_FOCUS!=='after-provision'){
  const beforeConfig=await(await context.request.get(base+'/api/admin')).json();
  const fillStudy=async()=>{await page.getByLabel('Study identifier',{exact:true}).fill('browser-study');await page.getByLabel('Study title',{exact:true}).fill('Synthetic browser provisioned study');await page.getByLabel('Study purpose and scope',{exact:true}).fill('An empty synthetic workspace for a controlled migration rehearsal.');await page.getByLabel('Existing synthetic directory group',{exact:true}).selectOption('demo-group-a');};

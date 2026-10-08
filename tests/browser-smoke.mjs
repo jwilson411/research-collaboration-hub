@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {mkdir,readFile} from 'node:fs/promises';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const primaryNav=async(p,name)=>{const link=p.getByRole('link',{name,exact:true});if(!await link.isVisible())await p.getByRole('button',{name:'Menu',exact:true}).click();await link.click();};
 const base=process.env.HUB_BROWSER_URL||'http://127.0.0.1:5080';
 const url=new URL(base);
 assert(['127.0.0.1','localhost','[::1]'].includes(url.hostname),'Browser smoke must target loopback');
@@ -20,8 +21,9 @@ page.on('pageerror',e=>errors.push(e.message));
 context.on('request',r=>{if(new URL(r.url()).origin!==url.origin)external.push(r.url());});
 const saved=async p=>{await p.locator('#task-form, #upload-form, #item-form, #document-form, #document-state-form, #typed-decision-form').waitFor({state:'detached'});await p.getByText('Saved. The shared record has been updated.',{exact:true}).waitFor();};
 // Resolve a single immutable record before opening any collapsed ancestors.
-const revealHistory=async record=>{await record.waitFor({state:'attached'});const id=await record.getAttribute('id');const exact=id?page.locator('[id='+JSON.stringify(id)+']'):record;for(const disclosure of await exact.locator('xpath=ancestor::details').all())if(await disclosure.getAttribute('open')===null)await disclosure.locator(':scope > summary').click();await exact.waitFor({state:'visible'});return exact;};
+const revealHistory=async record=>{await record.waitFor({state:'attached'});const id=await record.getAttribute('id');const exact=id?page.locator('[id='+JSON.stringify(id)+']'):record;for(const content of (await exact.locator('xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," usa-accordion__content ")]').all()).reverse()){const id=await content.getAttribute('id');const toggle=page.locator('button[aria-controls='+JSON.stringify(id)+']');if(await toggle.getAttribute('aria-expanded')==='false')await toggle.click();}await exact.waitFor({state:'visible'});return exact;};
 const revealRecord=async record=>{await page.getByRole('heading',{name:'Tasks & decisions',exact:true}).waitFor();await revealHistory(record);};
+const check=async input=>{if(!await input.isChecked()){await input.focus();await input.press('Space');}};
 const reflow=async p=>assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth),await p.evaluate(()=>innerWidth),'Page must not overflow viewport');
 async function auditPage(label){
  if(process.env.HUB_BROWSER_AXE!=='true')return;
@@ -41,7 +43,7 @@ async function verifyExactIdeaLinks(){
  }
  await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();await page.getByRole('button',{name:'Add task',exact:true}).click();
  await page.getByLabel('Task title',{exact:true}).fill('Follow the original brainstorming proposal');await page.getByLabel('Next action and context',{exact:true}).fill('Preserve the exact original idea as the supporting reference.');
- await page.locator('input[name=links][value="'+exactVersion+'"]').check();await page.getByRole('button',{name:'Save task',exact:true}).click();await saved(page);
+ await check(page.locator('input[name=links][value="'+exactVersion+'"]'));await page.getByRole('button',{name:'Save task',exact:true}).click();await saved(page);
  const record=page.locator('article.record').filter({has:page.getByRole('heading',{name:'Follow the original brainstorming proposal',exact:true})}).last();
  await record.getByRole('link',{name:'Checklist first · idea version 1',exact:true}).click();await page.locator('#board-version-'+exactVersion).waitFor();assert.equal(await page.locator(':focus').getAttribute('id'),'board-version-'+exactVersion);
  await page.screenshot({path:`${output}/exact-idea-reference.png`,fullPage:true});
@@ -61,7 +63,7 @@ try {
  await page.getByLabel('Responsible participant',{exact:true}).selectOption('alex');
  await page.getByLabel('Status',{exact:true}).selectOption('In progress');
  await page.getByLabel('Due date (optional)',{exact:true}).fill('2026-11-15');
- await page.locator('input[name=links]').first().check();
+ await check(page.locator('input[name=links]').first());
  await page.getByRole('button',{name:'Save task',exact:true}).click(); await saved(page);
  let task=page.locator('article.record').filter({has:page.getByRole('heading',{name:'Review the handoff checklist',exact:true,includeHidden:true})}).last();
  assert.match(await task.innerText(),/In progress/i); assert.match(await task.innerText(),/2026-11-15/);
@@ -107,13 +109,13 @@ try {
  assert.equal(await page.locator('.protocol-title').getByText('handoff-checklist.txt · file version 2',{exact:true}).count(),0);
  await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();
  await revealRecord(task);await task.getByRole('button',{name:'Update task',exact:true}).click();
- await page.getByLabel('handoff-checklist.txt · file version 1',{exact:true}).check();
+ await check(page.getByLabel('handoff-checklist.txt · file version 1',{exact:true}));
  await page.getByRole('button',{name:'Save task',exact:true}).click();await saved(page);
  await revealRecord(task);const citation=task.getByRole('link',{name:'handoff-checklist.txt · file version 1',exact:true}).first();await citation.waitFor();
  await page.getByRole('button',{name:'+ Record a decision',exact:true}).click();
  await page.getByLabel('Decision title',{exact:true}).fill('Retain the reviewed reference');
  await page.getByLabel('Decision and rationale',{exact:true}).fill('Keep the exact reviewed file version while preparing its successor.');
- await page.getByLabel('handoff-checklist.txt · file version 1',{exact:true}).check();
+ await check(page.getByLabel('handoff-checklist.txt · file version 1',{exact:true}));
  await page.getByRole('button',{name:'Save decision',exact:true}).click();await saved(page);
  await page.locator('article.record').filter({has:page.getByRole('heading',{name:'Retain the reviewed reference',exact:true})}).getByRole('link',{name:'handoff-checklist.txt · file version 1',exact:true}).waitFor();
  await page.getByRole('link',{name:'Document library',exact:true}).click();
@@ -127,7 +129,7 @@ try {
  await page.getByRole('button',{name:'Cancel',exact:true}).click();await reflow(page);
  await page.screenshot({path:`${output}/files-mobile.png`,fullPage:true});
  await page.locator('#identity').selectOption('admin'); await page.getByRole('heading',{name:'No study access',exact:true}).waitFor();
- await page.getByRole('link',{name:'Administration',exact:true}).click(); await page.getByRole('heading',{name:'Access & configuration',exact:true}).waitFor(); await reflow(page);
+ await primaryNav(page,'Administration'); await page.getByRole('heading',{name:'Access & configuration',exact:true}).waitFor(); await reflow(page);
  console.log('PASS: task, file and protocol workflows');
  // Administrative role does not grant study membership. Use two tabs to exercise stale configuration.
  await page.getByLabel('Synthetic identity',{exact:true}).selectOption('alex');
@@ -219,7 +221,7 @@ try {
  await seededSnapshot.getByRole('button',{name:'View snapshot',exact:true}).click();
  await page.locator('#handoff-detail').getByRole('heading',{name:'Orientation handoff • synthetic example',exact:true}).waitFor();
  assert.match(await page.locator('#handoff-detail').innerText(),/Captured state: Accepted/i);
- const seedReviewHistory=page.locator('#handoff-detail summary').filter({hasText:'Captured review history'}).first();
+ const seedReviewHistory=page.locator('#handoff-detail .usa-accordion__button').filter({hasText:'Captured review history'}).first();
  await seedReviewHistory.focus();await page.keyboard.press('Enter');
  assert.match(await page.locator('#handoff-detail').innerText(),/Draft → Review/);
  await page.keyboard.press('Enter');
@@ -232,8 +234,8 @@ try {
  assert.equal(await page.getByLabel('Snapshot title',{exact:true}).inputValue(),'Reviewed orientation handoff');
  await page.getByLabel('Evidence selection',{exact:true}).selectOption('explicit');
  await page.getByText('Choose explicit evidence (optional)',{exact:true}).click();
- await page.getByLabel('Revised orientation packet · document version 2',{exact:true}).check();
- await page.locator('#handoff-form label').filter({hasText:'Review the handoff checklist · task version'}).locator('input').check();
+ await check(page.getByLabel('Revised orientation packet · document version 2',{exact:true}));
+ await check(page.getByLabel(/Review the handoff checklist · task version/));
  const captureResponse=page.waitForResponse(r=>r.url().endsWith('/handoffs')&&r.request().method()==='POST');
  await page.getByRole('button',{name:'Capture snapshot',exact:true}).click();const captureResult=await captureResponse;assert.equal(captureResult.status(),200);const captured=await captureResult.json();
  await page.getByText('Immutable handoff snapshot captured.',{exact:true}).waitFor();
@@ -268,11 +270,11 @@ try {
  const nextResume=await page.locator('.orientation-resume a').getAttribute('href');assert.notEqual(nextResume,initialResume);await page.locator('.orientation-resume a').click();await page.waitForURL(current=>current.hash===nextResume);await page.getByRole('link',{name:'Overview',exact:true}).click();await page.getByRole('heading',{name:'Your study orientation',exact:true}).waitFor();
  await switchStudyIdentity('alex');await page.getByRole('link',{name:'Overview',exact:true}).click();await page.getByRole('heading',{name:'Your study orientation',exact:true}).waitFor();assert.equal(await page.locator('#'+orientationId).isChecked(),false);
  const alexStep=page.locator('[data-onboarding-step]:not([disabled])').nth(1);const alexStepId=await alexStep.getAttribute('id');
- const alexAcknowledged=page.waitForResponse(r=>r.url().endsWith('/onboarding')&&r.request().method()==='POST');await alexStep.check();assert.equal((await alexAcknowledged).status(),200);
+ const alexAcknowledged=page.waitForResponse(r=>r.url().endsWith('/onboarding')&&r.request().method()==='POST');await check(alexStep);assert.equal((await alexAcknowledged).status(),200);
  await page.getByText('Orientation step acknowledged for the current evidence.',{exact:true}).waitFor();
  await switchStudyIdentity('lead');await page.getByRole('link',{name:'Overview',exact:true}).click();await page.getByRole('heading',{name:'Your study orientation',exact:true}).waitFor();
  assert.equal(await page.locator('#'+orientationId).isChecked(),true);assert.equal(await page.locator('#'+alexStepId).isChecked(),false);
- for(let n=0;n<8&&await page.locator('[data-onboarding-step]:not([disabled]):not(:checked)').count();n++){const box=page.locator('[data-onboarding-step]:not([disabled]):not(:checked)').first();const oldBox=await box.elementHandle();const response=page.waitForResponse(r=>r.url().endsWith('/onboarding')&&r.request().method()==='POST');await box.check();assert.equal((await response).status(),200);await page.waitForFunction(input=>!input.isConnected,oldBox);}
+ for(let n=0;n<8&&await page.locator('[data-onboarding-step]:not([disabled]):not(:checked)').count();n++){const box=page.locator('[data-onboarding-step]:not([disabled]):not(:checked)').first();const oldBox=await box.elementHandle();const response=page.waitForResponse(r=>r.url().endsWith('/onboarding')&&r.request().method()==='POST');await check(box);assert.equal((await response).status(),200);await page.waitForFunction(input=>!input.isConnected,oldBox);}
  await page.getByText('You have reviewed every currently available step. Return when the study evidence changes.',{exact:true}).waitFor();
 
  await reflow(page);assert.equal(await page.getByRole('main').count(),1);
@@ -349,16 +351,16 @@ try {
  await page.getByLabel('Snapshot title',{exact:true}).fill('Decision baseline before supersession');
  await page.getByLabel('Scope, assumptions, open questions, and owners',{exact:true}).fill('Capture the original working choice and rationale before the team considers its successor.');
  await page.getByLabel('Evidence selection',{exact:true}).selectOption('explicit');await page.getByText('Choose explicit evidence (optional)',{exact:true}).click();
- await page.locator('#handoff-form input[name=itemIds][value="'+originalDecisionId+'"]').check();
+ await check(page.locator('#handoff-form input[name=itemIds][value="'+originalDecisionId+'"]'));
  const originalCaptureResponse=page.waitForResponse(r=>r.url().endsWith('/handoffs')&&r.request().method()==='POST');await page.getByRole('button',{name:'Capture snapshot',exact:true}).click();const originalCaptureResult=await originalCaptureResponse;assert.equal(originalCaptureResult.status(),200);const originalDecisionCapture=await originalCaptureResult.json();await page.getByText('Immutable handoff snapshot captured.',{exact:true}).waitFor();
  await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();await originalDecision.getByRole('button',{name:'Supersede decision',exact:true}).click();
  await page.getByLabel('Decision title',{exact:true}).fill('Use a paired orientation guide');await page.getByLabel('Decision and rationale',{exact:true}).fill('Use the concise checklist together with a short discussion guide for richer context.');
  await page.getByLabel('Reason for superseding',{exact:true}).fill('The rehearsal showed that unresolved questions need to accompany the checklist.');
  await page.getByRole('button',{name:'Save superseding decision',exact:true}).click();await saved(page);
  assert.equal(await page.locator('.decisions-current').getByRole('heading',{name:'Choose the concise orientation guide',exact:true}).count(),0);
- await page.locator('.decision-history > summary').click();await originalDecision.waitFor();assert.match(await originalDecision.innerText(),/Superseded decision/i);assert((await originalDecision.innerText()).includes(originalRationale));
+ await page.locator('.decision-history > .usa-accordion__heading > .usa-accordion__button').click();await originalDecision.waitFor();assert.match(await originalDecision.innerText(),/Superseded decision/i);assert((await originalDecision.innerText()).includes(originalRationale));
  const successor=page.locator('.decisions-current article.record').filter({has:page.getByRole('heading',{name:'Use a paired orientation guide',exact:true})});assert.match(await successor.innerText(),/Current decision/i);
- await page.locator('.decision-history > summary').click();await successor.getByRole('link',{name:'Choose the concise orientation guide · decision version 1',exact:true}).click();await originalDecision.waitFor();assert.equal(await page.locator(':focus').getAttribute('id'),'record-'+originalDecisionId);
+ await page.locator('.decision-history > .usa-accordion__heading > .usa-accordion__button').click();await successor.getByRole('link',{name:'Choose the concise orientation guide · decision version 1',exact:true}).click();await originalDecision.waitFor();assert.equal(await page.locator(':focus').getAttribute('id'),'record-'+originalDecisionId);
  await reflow(page);await auditPage('decision supersession and history');await page.screenshot({path:`${output}/decisions-mobile.png`,fullPage:true});
  await page.getByRole('link',{name:'Handoff snapshots',exact:true}).click();const baselineCard=page.locator('#handoff-list article').filter({has:page.getByRole('heading',{name:'Decision baseline before supersession',exact:true})});
  const baselineRead=page.waitForResponse(r=>r.url().endsWith('/handoffs/'+originalDecisionCapture.id)&&r.request().method()==='GET');await baselineCard.getByRole('button',{name:'View snapshot',exact:true}).click();assert.deepEqual(await(await baselineRead).json(),originalDecisionCapture);await page.locator('#handoff-detail').getByRole('heading',{name:'Decision baseline before supersession',exact:true}).waitFor();assert((await page.locator('#handoff-detail').innerText()).includes(originalRationale));assert.equal(await page.locator('#handoff-detail').getByRole('heading',{name:'Use a paired orientation guide',exact:true}).count(),0);

@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const primaryNav=async(p,name)=>{const link=p.getByRole('link',{name,exact:true});if(!await link.isVisible())await p.getByRole('button',{name:'Menu',exact:true}).click();await link.click();};
 const base=process.env.HUB_BROWSER_URL||'http://127.0.0.1:5080';
 assert(['127.0.0.1','localhost','[::1]'].includes(new URL(base).hostname));
 const output=process.env.HUB_BROWSER_ARTIFACTS||'artifacts/browser-smoke';await mkdir(output,{recursive:true});
@@ -29,7 +30,7 @@ try{
    await seen;await identity('admin');await page.getByRole('heading',{name:'No study access'}).waitFor();releaseRace();await finishedRace;await page.unroute(pattern);await page.waitForTimeout(100);assert(!await page.locator('main').innerText().then(t=>t.includes('Obsolete synthetic failure')));await identity('alex');
   }
   const preRevocation=await json('/api/studies/atlas');
-  const adminContext=await browser.newContext();adminContext.setDefaultTimeout(15000);const admin=await adminContext.newPage();await admin.goto(base);await admin.getByRole('heading',{name:'My studies',exact:true}).waitFor();await admin.locator('#identity').selectOption('admin');await admin.getByRole('heading',{name:'No study access'}).waitFor();await admin.getByRole('link',{name:'Administration',exact:true}).click();await admin.getByRole('heading',{name:'Access & configuration'}).waitFor();
+  const adminContext=await browser.newContext();adminContext.setDefaultTimeout(15000);const admin=await adminContext.newPage();await admin.goto(base);await admin.getByRole('heading',{name:'My studies',exact:true}).waitFor();await admin.locator('#identity').selectOption('admin');await admin.getByRole('heading',{name:'No study access'}).waitFor();await primaryNav(admin,'Administration');await admin.getByRole('heading',{name:'Access & configuration'}).waitFor();
   const mapping=async group=>{await admin.getByLabel('Stable group identifier',{exact:true}).fill(group);const old=await admin.locator('#mapping-form').getAttribute('data-revision');await admin.getByRole('button',{name:'Save mapping',exact:true}).click();await admin.waitForFunction(old=>document.querySelector('#mapping-form')?.dataset.revision!==old,old);};
   await mapping('demo-group-b');await page.reload();await page.getByRole('heading',{name:'No study access'}).waitFor();assert.equal((await context.request.get(base+'/api/studies/atlas')).status(),404);for(const file of preRevocation.files)assert.equal((await context.request.get(base+'/api/studies/atlas/files/'+file.id+'/download')).status(),404);await mapping('demo-group-a');await adminContext.close();
   await page.goto(base+'/#study/atlas/document/journey-guide-v1');await page.locator('#record-journey-guide-v1').waitFor();assert.equal(await page.locator(':focus').getAttribute('id'),'record-journey-guide-v1');assert(await page.locator('#record-journey-guide-v1').isVisible());
