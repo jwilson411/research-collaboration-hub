@@ -1,0 +1,21 @@
+{
+  "name": "research-collaboration-hub",
+  "version": "1.0.0",
+  "description": "Local research study collaboration hub",
+  "scripts": {
+    "build:assets": "node scripts/build-assets.mjs",
+    "check:frontend": "node --check wwwroot/app.js && node --check wwwroot/uswds-components.js && node --check assets/uswds-components-entry.js",
+    "build": "npm run build:assets"
+  },
+  "keywords": [],
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@uswds/uswds": "3.14.0",
+    "autoprefixer": "10.6.1",
+    "esbuild": "0.28.2",
+    "postcss": "8.5.29",
+    "sass": "1.105.1"
+  },
+  "private": true
+}

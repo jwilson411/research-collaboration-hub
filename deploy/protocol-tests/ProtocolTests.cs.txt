@@ -1,0 +1,117 @@
+using System.Collections;
+using System.Diagnostics.CodeAnalysis;
+using System.Data;
+using System.Data.Common;
+using System.Text.Json;
+
+var checks = 0;
+void Check(bool condition, string description) { if (!condition) throw new Exception(description); checks++; Console.WriteLine("PASS " + description); }
+void Throws(Action action, string description) { try { action(); } catch (InvalidOperationException) { checks++; Console.WriteLine("PASS " + description); return; } throw new Exception(description); }
+var db = new FakeDatabase();
+var store = new SqlStudyStore(() => new FakeConnection(db));
+store.Read(s => { s.Roles["leak"] = "Administrator"; return 0; });
+Check(!store.Read(s => s.Roles.ContainsKey("leak")), "read returns isolated graph");
+var failed = store.Change(s => { s.Roles["leak"] = "Administrator"; return Results.BadRequest(); });
+Check(db.Commits == 0 && db.Rollbacks == 1 && !db.Json.Contains("leak"), "failed result rolls back mutated state");
+store.Change(s => { s.Roles["preview"] = "Researcher"; return Results.Ok(); });
+Check(db.Commits == 1 && db.Revision == 1 && db.Json.Contains("preview"), "successful operation commits once");
+Check(db.Isolation == IsolationLevel.Serializable && db.LockedRead && db.ParameterizedWrite, "serializable locked read and parameterized revision write");
+Throws(() => store.Change(s => { s.Roles["throw"] = "Administrator"; throw new InvalidOperationException("simulation"); }), "callback exception is propagated");
+Check(!db.Json.Contains("throw") && db.Commits == 1, "callback exception cannot commit");
+db.Conflict = true;
+Throws(() => store.Change(s => Results.Ok()), "zero-row update fails optimistic commit");
+Check(db.Commits == 1, "concurrency conflict cannot commit");
+db.Conflict = false;
+Throws(() => store.InitializeSyntheticDemo("Production", true), "production synthetic import rejected");
+Throws(() => store.InitializeSyntheticDemo("Development", false), "implicit synthetic import rejected");
+Throws(() => store.InitializeSyntheticDemo("Development", true), "nonempty synthetic initialization rejected");
+var empty = new FakeDatabase();
+var fresh = new SqlStudyStore(() => new FakeConnection(empty));
+fresh.InitializeSyntheticDemo("Development", true);
+Check(empty.Commits == 1 && empty.Revision == 1 && empty.Json.Contains("synthetic"), "explicit synthetic initialization commits only to empty snapshot");
+Throws(() => fresh.InitializeSyntheticDemo("Development", true), "repeated initialization cannot overwrite");
+var before = db.Json;
+Throws(() => store.Change(s => { s.Studies.Add(new string('x', SqlStudyStore.MaximumSnapshotBytes)); return Results.Ok(); }), "oversized snapshot rejected");
+Check(db.Json == before, "oversized mutation is not persisted");
+Throws(() => new SqlStudyStore(""), "missing connection rejected");
+Throws(() => new SqlStudyStore("Server=localhost;Database=synthetic;Encrypt=False"), "unencrypted connection rejected");
+Throws(() => new SqlStudyStore("Server=localhost;Database=synthetic;TrustServerCertificate=True"), "unvalidated certificate rejected");
+var malformed = new FakeDatabase { Json = "{\"studies\":[],\"audit\":[]}" };
+try { new SqlStudyStore(() => new FakeConnection(malformed)).Read(s => s); throw new Exception("missing roles accepted"); }
+catch (InvalidDataException) { checks++; Console.WriteLine("PASS missing roles cannot inherit demo administrator"); }
+Console.WriteLine($"{checks} protocol checks passed. Fake connection; no SQL Server integration claim.");
+
+// Minimal domain stand-ins isolate the adapter protocol; application integration is tested separately.
+public class State { public List<string> Studies { get; set; } = []; public Dictionary<string,string> Roles { get; set; } = new(){{"admin","Administrator"}}; public List<string> Audit { get; set; } = []; }
+public interface IStudyStore { T Read<T>(Func<State,T> read); IResult Change(Func<State,IResult> change); }
+public static class Demo { public static State Seed() => new() { Studies = ["synthetic"], Roles = new(){{"synthetic-admin","Administrator"}} }; }
+public class FakeDatabase { public string Json = "{\"studies\":[],\"roles\":{},\"audit\":[]}"; public long Revision; public int Commits, Rollbacks; public bool Conflict, LockedRead, ParameterizedWrite; public IsolationLevel Isolation; }
+public sealed class FakeConnection(FakeDatabase db) : DbConnection
+{
+    [AllowNull] public override string ConnectionString { get; set; } = "";
+    public override string Database => "synthetic"; public override string DataSource => "fake";
+    public override string ServerVersion => "fake"; public override ConnectionState State => ConnectionState.Open;
+    public override void ChangeDatabase(string name) => throw new NotSupportedException();
+    public override void Close() {} public override void Open() {}
+    protected override DbTransaction BeginDbTransaction(IsolationLevel level) { db.Isolation = level; return new FakeTransaction(this, db, level); }
+    protected override DbCommand CreateDbCommand() => new FakeCommand(this, db);
+}
+public sealed class FakeTransaction(DbConnection connection, FakeDatabase db, IsolationLevel level) : DbTransaction
+{
+    public string? PendingJson; public bool Finished;
+    public override IsolationLevel IsolationLevel => level; protected override DbConnection DbConnection => connection;
+    public override void Commit() { if (PendingJson is not null) { db.Json = PendingJson; db.Revision++; } db.Commits++; Finished = true; }
+    public override void Rollback() { db.Rollbacks++; Finished = true; }
+    protected override void Dispose(bool disposing) { if (!Finished) Rollback(); base.Dispose(disposing); }
+}
+public sealed class FakeCommand(DbConnection connection, FakeDatabase db) : DbCommand
+{
+    readonly FakeParameters parameters = new();
+    [AllowNull] public override string CommandText { get; set; } = ""; public override int CommandTimeout { get; set; }
+    public override CommandType CommandType { get; set; } public override bool DesignTimeVisible { get; set; }
+    public override UpdateRowSource UpdatedRowSource { get; set; }
+    protected override DbConnection? DbConnection { get; set; } = connection;
+    protected override DbTransaction? DbTransaction { get; set; }
+    protected override DbParameterCollection DbParameterCollection => parameters;
+    public override void Cancel() {} public override void Prepare() {}
+    public override object? ExecuteScalar() => throw new NotSupportedException();
+    protected override DbParameter CreateDbParameter() => new FakeParameter();
+    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
+    {
+        db.LockedRead |= CommandText.Contains("WITH (UPDLOCK, HOLDLOCK)");
+        var table = new DataTable(); table.Columns.Add("SchemaVersion",typeof(int)); table.Columns.Add("Revision",typeof(long)); table.Columns.Add("StateJson",typeof(string));
+        table.Rows.Add(1, db.Revision, db.Json); return table.CreateDataReader();
+    }
+    public override int ExecuteNonQuery()
+    {
+        db.ParameterizedWrite = CommandText.Contains("Revision = @revision") && parameters.Count == 3 && parameters["@state"].DbType == DbType.String;
+        if (db.Conflict || (long)parameters["@revision"].Value! != db.Revision) return 0;
+        ((FakeTransaction)DbTransaction!).PendingJson = (string)parameters["@state"].Value!; return 1;
+    }
+}
+public sealed class FakeParameter : DbParameter
+{
+    public override DbType DbType { get; set; } public override ParameterDirection Direction { get; set; } = ParameterDirection.Input;
+    public override bool IsNullable { get; set; } [AllowNull] public override string ParameterName { get; set; } = "";
+    [AllowNull] public override string SourceColumn { get; set; } = ""; public override object? Value { get; set; }
+    public override bool SourceColumnNullMapping { get; set; } public override int Size { get; set; }
+    public override void ResetDbType() {}
+}
+public sealed class FakeParameters : DbParameterCollection
+{
+    readonly List<DbParameter> values = [];
+    public override int Count => values.Count; public override object SyncRoot => ((ICollection)values).SyncRoot;
+    public override int Add(object value) { values.Add((DbParameter)value); return values.Count-1; }
+    public override void AddRange(Array value) { foreach (var item in value) Add(item!); }
+    public override void Clear() => values.Clear(); public override bool Contains(object value) => values.Contains((DbParameter)value);
+    public override bool Contains(string value) => values.Any(p => p.ParameterName == value);
+    public override void CopyTo(Array array,int index) => ((ICollection)values).CopyTo(array,index);
+    public override IEnumerator GetEnumerator() => values.GetEnumerator(); public override int IndexOf(object value) => values.IndexOf((DbParameter)value);
+    public override int IndexOf(string value) => values.FindIndex(p => p.ParameterName == value);
+    public override void Insert(int index,object value) => values.Insert(index,(DbParameter)value);
+    public override void Remove(object value) => values.Remove((DbParameter)value); public override void RemoveAt(int index) => values.RemoveAt(index);
+    public override void RemoveAt(string value) => values.RemoveAt(IndexOf(value));
+    protected override DbParameter GetParameter(int index) => values[index]; protected override DbParameter GetParameter(string value) => values[IndexOf(value)];
+    protected override void SetParameter(int index,DbParameter value) => values[index] = value;
+    protected override void SetParameter(string name,DbParameter value) => values[IndexOf(name)] = value;
+}

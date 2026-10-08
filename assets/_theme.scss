@@ -1,0 +1,10 @@
+// Shared, documented USWDS settings. Component colors, states and geometry remain standard.
+@forward "uswds-core" with (
+  $theme-font-path: "../fonts",
+  $theme-image-path: "../img",
+  $theme-global-content-styles: true,
+  $theme-grid-container-max-width: "widescreen",
+  $theme-header-max-width: "widescreen",
+  $theme-show-notifications: false,
+  $theme-show-compile-warnings: false
+);

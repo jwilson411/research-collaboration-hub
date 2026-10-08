@@ -1,0 +1,155 @@
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Antiforgery;
+
+var builder = WebApplication.CreateBuilder(args);
+if (!builder.Environment.IsDevelopment() || Environment.GetEnvironmentVariable("HUB_DEMO_ENABLED") != "true") throw new InvalidOperationException("Demo provider is Development-only. Production identity and storage adapters require implementation and validation.");
+if (builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any()) throw new InvalidOperationException("Custom Kestrel endpoints are disabled for the local demo.");
+builder.WebHost.ConfigureKestrel(options => options.Configure(new ConfigurationBuilder().Build(), reloadOnChange: false));
+builder.WebHost.UseUrls("http://127.0.0.1:5080");
+builder.Services.AddSingleton<AttachmentStorage>();
+builder.Services.AddSingleton<DemoSessionStore>();
+builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.Name = "hub.csrf"; o.Cookie.SameSite = SameSiteMode.Strict; });
+var provider=Environment.GetEnvironmentVariable("HUB_STORAGE_PROVIDER") ?? "Json";
+if(provider is not ("Json" or "SqlServer"))throw new InvalidOperationException("Unknown storage provider.");
+builder.Services.AddSingleton<IStudyStore>(_ => provider switch {
+ "Json" => new JsonStudyStore(Environment.GetEnvironmentVariable("HUB_DATA") ?? Path.Combine(builder.Environment.ContentRootPath, ".data", "hub.json")),
+ "SqlServer" => new SqlStudyStore(Environment.GetEnvironmentVariable("HUB_SQL_CONNECTION") ?? ""),
+ _ => throw new InvalidOperationException("Unknown storage provider.")
+});
+builder.Services.ConfigureHttpJsonOptions(options => {
+ var resolver=new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver();
+ resolver.Modifiers.Add(info => {
+ if(info.Type==typeof(SourceProvenance)) {var original=info.Properties.FirstOrDefault(p=>p.Name=="original");if(original is not null)original.ShouldSerialize=(_,_)=>false;}
+ if(info.Type==typeof(State)) {var requests=info.Properties.FirstOrDefault(p=>p.Name=="configRequests");if(requests is not null)requests.ShouldSerialize=(_,_)=>false;}
+ if(info.Type==typeof(Study)) {
+  foreach(var name in new[]{"requests","importLedger","importReports","handoffs","boards","personalOnboarding","decisionRequests","importReviewEvents","importReceipts","templateDefinitions","migrationRehearsals"}) {var hidden=info.Properties.FirstOrDefault(p=>p.Name==name);if(hidden is not null)hidden.ShouldSerialize=(_,_)=>false;}
+  var items=info.Properties.FirstOrDefault(p=>p.Name=="items"); if(items is not null)items.Get=obj=>{var study=(Study)obj;return study.Items.Select(item=>EvidenceRules.ItemAvailable(study,item.Id)?item:item with {Title="Removed study record",Body="[Removed from demo view]",Deleted=true,Task=null,Decision=null,BoardDecision=null,Resource=null,Template=null,FileIds=[],Provenance=null}).ToList();};
+  var reviews=info.Properties.FirstOrDefault(p=>p.Name=="documentReviews"); if(reviews is not null)reviews.Get=obj=>{var study=(Study)obj;return study.DocumentReviews.Where(pair=>study.Items.Any(item=>item.Id==pair.Key&&EvidenceRules.ItemAvailable(study,item.Id)&&item.Kind=="document")).ToDictionary(pair=>pair.Key,pair=>pair.Value);};
+  var files=info.Properties.FirstOrDefault(p=>p.Name=="files"); if(files is not null)files.Get=obj=>{ var study=(Study)obj; return study.Files.Where(file=>!file.Deleted&&(file.ParentId is null||EvidenceRules.ItemAvailable(study,file.ParentId))).ToList(); };
+ } });
+ options.SerializerOptions.TypeInfoResolver=resolver;
+});
+var app = builder.Build();
+if(args.Contains("--initialize-synthetic-sql")) {
+ if(provider!="SqlServer")throw new InvalidOperationException("Explicit SQL initialization requires SqlServer provider.");
+ ((SqlStudyStore)app.Services.GetRequiredService<IStudyStore>()).InitializeSyntheticDemo(builder.Environment.EnvironmentName,Environment.GetEnvironmentVariable("HUB_DEMO_ENABLED")=="true");
+ return;
+}
+app.Use(async (ctx, next) => {
+ if (ctx.Connection.RemoteIpAddress is not { } ip || !IPAddress.IsLoopback(ip) || !(ctx.Request.Host.Host is "127.0.0.1" or "localhost" or "::1")) { ctx.Response.StatusCode=403; return; }
+ ctx.Response.Headers["X-Content-Type-Options"]="nosniff";
+ ctx.Response.Headers["Content-Security-Policy"]="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+ ctx.Response.Headers["Cache-Control"]="no-store";
+ ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = 1048576;
+ if (ctx.Request.ContentLength > 1048576) { ctx.Response.StatusCode=413; return; }
+ if (ctx.Request.Method is not ("GET" or "HEAD" or "OPTIONS")) {
+  try { await ctx.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(ctx); }
+  catch (AntiforgeryValidationException) { ctx.Response.StatusCode=400; await ctx.Response.WriteAsJsonAsync(new {error="Invalid anti-forgery token. Refresh and retry."}); return; }
+ }
+ try { await next(); } catch (BadHttpRequestException) { ctx.Response.StatusCode=400; } catch (JsonException) { ctx.Response.StatusCode=400; }
+});
+app.Use((context,next)=>context.RequestServices.GetRequiredService<DemoSessionStore>().Invoke(context,next));
+app.UseDefaultFiles(); app.UseStaticFiles();
+string Identity(HttpContext c) => DemoSessionStore.Actor(c);
+bool Access(State state,string user,Study study) => Demo.Groups.GetValueOrDefault(user, []).Contains(study.GroupId);
+bool Admin(State state,string user) => state.Roles.GetValueOrDefault(user)=="Administrator";
+app.MapGet("/api/session", (HttpContext c,IAntiforgery anti,IStudyStore store) => store.Read(s=>new {user=new {id=Identity(c),name=Demo.Identities.Single(x=>x.Id==Identity(c)).Name,role=s.Roles.GetValueOrDefault(Identity(c),"Researcher")},identities=Demo.Identities,csrf=anti.GetAndStoreTokens(c).RequestToken,sessionContext=DemoSessionStore.Generation(c),authorizationContext=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new {revision=s.ConfigRevision,actor=Identity(c),role=s.Roles.GetValueOrDefault(Identity(c),"Researcher"),groups=Demo.Groups.GetValueOrDefault(Identity(c),[]).OrderBy(group=>group)}))))}));
+app.MapPost("/api/session", (HttpContext c,SessionInput input) => {
+ if (!Demo.Identities.Any(x=>x.Id==input.Identity)) return Results.BadRequest(new {error="Unknown synthetic identity"});
+ DemoSessionStore.Switch(c,input.Identity); return Results.Ok();
+});
+app.MapGet("/api/studies",(HttpContext c,IStudyStore store)=>store.Read(s=>s.Studies.Where(x=>Access(s,Identity(c),x)).ToArray()));
+app.MapGet("/api/studies/{id}",(string id,HttpContext c,IStudyStore store)=>store.Read<IResult>(s=>s.Studies.FirstOrDefault(x=>x.Id==id && Access(s,Identity(c),x)) is {} study ? Results.Ok(study) : Results.NotFound()));
+app.MapSearchEndpoints(Identity,Access);
+app.MapMigratedLinkEndpoints(Identity,Access);
+app.MapPost("/api/studies/{id}/items",(string id,ItemInput input,HttpContext c,IStudyStore store,AttachmentStorage storage)=>store.Change(s=> {
+ var study=s.Studies.FirstOrDefault(x=>x.Id==id && Access(s,Identity(c),x)); if(study is null)return Results.NotFound();
+ if (!Guid.TryParse(input.RequestId,out _) || !new[]{"document","documentation","discussion","reply","decision","idea"}.Contains(input.Kind) || string.IsNullOrWhiteSpace(input.Title) || input.Title.Length>180 || string.IsNullOrWhiteSpace(input.Body) || input.Body.Length>20000) return Results.BadRequest(new {error="Provide a valid kind, title (1–180), body (1–20000), and request identifier."});
+ var fingerprint=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(input))));
+ if(study.Requests.TryGetValue(input.RequestId,out var prior))return prior==fingerprint?Results.Ok(study):Results.Conflict(new {error="Request identifier was already used for a different operation."});
+ if(study.Revision!=input.ExpectedRevision)return Results.Conflict(new {error="Study changed. Refresh before retrying; your text has not been saved."});
+ if(study.Stage!="Active")return Results.Conflict(new {error="Reopen the study before making changes."});
+ if(input.ParentId is not null && !study.Items.Any(i=>i.Id==input.ParentId&&EvidenceRules.ItemAvailable(study,i.Id) && (input.Kind!="reply" || i.Kind is "discussion" or "reply")))return Results.BadRequest(new {error="Parent must be a live record in this study; replies require a discussion or reply."});
+ if(input.Kind=="decision"&&input.ParentId is not null&&study.Items.Any(item=>item.Id==input.ParentId&&item.BoardIdea is not null))return Results.BadRequest(new {error="Convert a session idea through its session to preserve the exact source version."});
+ if(input.Kind=="reply" && input.ParentId is null)return Results.BadRequest(new {error="Replies require a parent."});
+ if(input.DocumentId is not null && !study.Items.Any(i=>i.Id==input.DocumentId&&EvidenceRules.ItemAvailable(study,i.Id)&&i.Kind=="document"))return Results.BadRequest(new {error="Evidence must be a live document version in this study."});
+ var fileIds=input.FileIds??[];
+ if(fileIds.Length>30||fileIds.Distinct().Count()!=fileIds.Length||fileIds.Any(fileId=>!EvidenceRules.FileAvailable(study,fileId,storage)))return Results.BadRequest(new {error="File evidence must reference distinct released versions in this study."});
+ var item=new Item(Guid.NewGuid().ToString(),input.Kind,input.Title.Trim(),input.Body,input.ParentId,input.DocumentId,input.Kind=="document"?1:study.Items.Count(i=>i.Kind==input.Kind&&i.Title==input.Title.Trim())+1,Identity(c),DateTimeOffset.UtcNow){FileIds=fileIds};
+ study.Items.Add(item); study.Requests.Add(input.RequestId,fingerprint); study.Revision++; s.Audit.Add(new(Identity(c),"Created "+input.Kind,study.Id,DateTimeOffset.UtcNow)); return Results.Ok(study);
+}));
+app.MapPost("/api/studies/{id}/stage",(string id,StageInput input,HttpContext c,IStudyStore store)=>store.Change(s=> {
+ var st=s.Studies.FirstOrDefault(x=>x.Id==id&&Access(s,Identity(c),x));if(st is null)return Results.NotFound();
+ if(!Guid.TryParse(input.RequestId,out _)||!new[]{"Active","Paused","Closed"}.Contains(input.Stage))return Results.BadRequest();
+ var fingerprint=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(input))));
+ if(st.Requests.TryGetValue(input.RequestId,out var prior))return prior==fingerprint?Results.Ok(st):Results.Conflict();
+ if(st.Revision!=input.ExpectedRevision)return Results.Conflict();
+ st.Stage=input.Stage;st.Revision++;st.Requests.Add(input.RequestId,fingerprint);s.Audit.Add(new(Identity(c),"Lifecycle: "+input.Stage,id,DateTimeOffset.UtcNow));return Results.Ok(st);
+}));
+app.MapGet("/api/studies/{id}/documents/{itemId}/download",(string id,string itemId,HttpContext c,IStudyStore store)=>store.Read<IResult>(s=> {
+ var st=s.Studies.FirstOrDefault(x=>x.Id==id&&Access(s,Identity(c),x));var item=st?.Items.FirstOrDefault(i=>i.Id==itemId&&EvidenceRules.ItemAvailable(st!,i.Id)&&i.Kind=="document");
+ return item is null?Results.NotFound():Results.File(Encoding.UTF8.GetBytes(item.Body),"text/plain",$"document-{item.Id}.txt");
+}));
+app.MapPost("/api/studies/{id}/items/{itemId}/delete",(string id,string itemId,RevisionInput input,HttpContext c,IStudyStore store)=>store.Change(s=> {
+ var st=s.Studies.FirstOrDefault(x=>x.Id==id&&Access(s,Identity(c),x));if(st is null)return Results.NotFound();
+ if(!Guid.TryParse(input.RequestId,out _))return Results.BadRequest();
+ if(st.Items.Any(item=>item.Id==itemId&&item.BoardIdea is not null))return Results.Conflict(new {error="Manage session ideas through their brainstorming session so history and references are preserved."});
+ if(st.Items.Any(item=>item.Kind=="document"&&!item.Deleted&&DocumentRules.Status(st,item) is "Accepted" or "Superseded"&&EvidenceRules.HasAncestor(st,item.ParentId,itemId)))return Results.Conflict(new {error="This record is an ancestor of a retained accepted document and cannot be removed."});
+ if(st.Items.Any(item=>item.Kind=="decision"&&!item.Deleted&&(item.Decision?.SupersedesId is not null||st.Items.Any(next=>next.Decision?.SupersedesId==item.Id))&&EvidenceRules.HasAncestor(st,item.ParentId,itemId)))return Results.Conflict(new {error="This record is an ancestor of a retained decision trail and cannot be removed."});
+ var decision=st.Items.FirstOrDefault(item=>item.Id==itemId&&item.Kind=="decision"&&!item.Deleted);
+ if(decision is not null&&DecisionRules.DeletionError(st,decision) is {} decisionError)return Results.Conflict(new {error=decisionError});
+ if(st.Items.Any(item=>item.Kind=="resource"&&!item.Deleted&&(item.Resource?.VersionDetails is not null||ResourceRules.HasSuccessor(st,item.Id))&&EvidenceRules.HasAncestor(st,item.ParentId,itemId)))return Results.Conflict(new {error="This record is an ancestor of retained resource history and cannot be removed."});
+ var resource=st.Items.FirstOrDefault(item=>item.Id==itemId&&item.Kind=="resource"&&!item.Deleted);
+ if(resource is not null&&ResourceRules.DeletionError(st,resource) is {} resourceError)return Results.Conflict(new {error=resourceError});
+ var document=st.Items.FirstOrDefault(item=>item.Id==itemId&&item.Kind=="document"&&!item.Deleted);
+ if(document is not null&&DocumentRules.DeletionError(st,document,Identity(c)) is {} deletionError)return Results.Conflict(new {error=deletionError});
+ var fingerprint=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("delete:"+itemId+":"+JsonSerializer.Serialize(input))));
+ if(st.Requests.TryGetValue(input.RequestId,out var prior))return prior==fingerprint?Results.Ok(st):Results.Conflict();
+ if(st.Revision!=input.ExpectedRevision||st.Stage!="Active")return Results.Conflict();
+ if(st.CurrentProtocol is {Kind:"item"} protocol&&EvidenceRules.HasAncestor(st,protocol.Id,itemId))return Results.Conflict(new {error="Choose another current protocol or clear its designation before removing this version."});
+ if(st.Files.Any(file=>!file.Deleted&&EvidenceRules.HasAncestor(st,file.ParentId,itemId)&&EvidenceRules.ProtectedByAcceptedDocument(st,file.Id)))return Results.Conflict(new {error="An accepted document retains an attachment on this record as evidence."});
+ var importedParent=st.ImportLedger.Values.FirstOrDefault(entry=>entry.TargetId==itemId);
+ if(importedParent is not null && (st.Items.Any(child=>!child.Deleted&&child.ParentId==itemId)||st.Files.Any(child=>!child.Deleted&&(child.ParentId==itemId||child.FamilyId==itemId))||st.ImportLedger.Values.Any(entry=>entry.SourceStudyId==importedParent.SourceStudyId && entry.Source.Original.ValueKind==JsonValueKind.Object && entry.Source.Original.TryGetProperty("parent_id",out var parent) && parent.ValueKind==JsonValueKind.String && parent.GetString()==importedParent.SourceId && (st.Items.Any(child=>child.Id==entry.TargetId&&!child.Deleted)||st.Files.Any(child=>child.Id==entry.TargetId&&!child.Deleted)))))return Results.Conflict(new {error="Remove imported child records first so historical structure cannot be silently broken."});
+ var index=st.Items.FindIndex(i=>i.Id==itemId&&!i.Deleted);if(index<0)return Results.NotFound();
+ st.Items[index]=st.Items[index] with {Deleted=true,Body="[Removed from demo view]",Task=null,FileIds=[],Provenance=null,BoardDecision=null,Decision=null,Resource=null,Template=null};st.Revision++;st.Requests.Add(input.RequestId,fingerprint);s.Audit.Add(new(Identity(c),"Removed item",st.Id,DateTimeOffset.UtcNow));return Results.Ok(st);
+}));
+app.MapDecisionEndpoints(Identity,Access);
+app.MapResourceEndpoints(Identity,Access);
+app.MapBoardEndpoints(Identity,Access);
+app.MapOnboardingEndpoints(Identity,Access);
+app.MapDocumentEndpoints(Identity,Access);
+app.MapHandoffEndpoints(Identity,Access);
+app.MapAdminEndpoints(Identity,Access,Admin);
+app.MapProtocolEndpoints(Identity,Access);
+app.MapSyntheticImportEndpoints(Identity,Access);
+app.MapImportReviewEndpoints(Identity,Access);
+app.MapMigrationRehearsalEndpoints(Identity,Access);
+app.MapTaskEndpoints(Identity,Access);
+app.MapAttachmentEndpoints(Identity,Access);
+app.MapFallback("/api/{**path}",()=>Results.NotFound(new {error="Unknown API endpoint."}));
+app.MapFallbackToFile("index.html");app.Run();
+record RevisionInput(int ExpectedRevision,string RequestId);
+record SessionInput(string Identity);
+record ItemInput(string Kind,string Title,string Body,string? ParentId,string? DocumentId,int ExpectedRevision,string RequestId,string[]? FileIds=null);
+record StageInput(string Stage,int ExpectedRevision,string RequestId);
+public record Item(string Id,string Kind,string Title,string Body,string? ParentId,string? DocumentId,int Version,string Author,DateTimeOffset CreatedAt,bool Deleted=false) { [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public DocumentVersionDetails? DocumentVersion {get;init;} [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public BrainstormIdeaVersion? BoardIdea {get;init;} [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public BrainstormDecisionSource? BoardDecision {get;init;} [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public DecisionDetails? Decision {get;init;} [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public DocumentTemplate? Template {get;init;} [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public ResourcePointer? Resource {get;init;} public TaskDetails? Task {get;init;} public string[] FileIds {get;init;}=[]; public SourceProvenance? Provenance {get;init;} }
+public record Audit(string Actor,string Action,string Target,DateTimeOffset At);
+public class Study {public Dictionary<string,string> DecisionRequests {get;set;}=[];public string Id{get;set;}="";public string Title{get;set;}="";public string Summary{get;set;}="";public string Stage{get;set;}="Active";public string GroupId{get;set;}="";public int Revision{get;set;}=1;public List<Item> Items{get;set;}=[];public List<StoredFile> Files{get;set;}=[];public Dictionary<string,DocumentReviewState> DocumentReviews {get;set;}=[];public List<HandoffSnapshot> Handoffs {get;set;}=[];public List<BrainstormBoard> Boards {get;set;}=[];public Dictionary<string,PersonalOrientation> PersonalOnboarding {get;set;}=[];public ProtocolDesignation? CurrentProtocol {get;set;} public List<ProtocolDesignation> ProtocolHistory {get;set;}=[];public Dictionary<string,ImportEntry> ImportLedger {get;set;}=[];public List<ImportReport> ImportReports {get;set;}=[];public List<ImportReviewEvent> ImportReviewEvents {get;set;}=[];public List<ImportReceipt> ImportReceipts {get;set;}=[];public List<TemplateDefinition> TemplateDefinitions {get;set;}=[];public List<MigrationRehearsal> MigrationRehearsals {get;set;}=[];[System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public StudyProvisioning? Provisioning {get;set;}public Dictionary<string,string> Requests{get;set;}=[];}
+public class State {[System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public string? DatasetKind {get;set;} public int ConfigRevision {get;set;}=1;public Dictionary<string,string> ConfigRequests {get;set;}=[];public List<ConfigurationChange> ConfigurationHistory {get;set;}=[];public List<Study> Studies{get;set;}=[];public Dictionary<string,string> Roles{get;set;}=new(){{"admin","Administrator"}};public List<Audit> Audit{get;set;}=[];}
+public interface IStudyStore { T Read<T>(Func<State,T> read); IResult Change(Func<State,IResult> change); }
+public sealed class JsonStudyStore:IStudyStore {
+ readonly string path;readonly object gate=new();State state;readonly JsonSerializerOptions json=new(JsonSerializerDefaults.Web){WriteIndented=true};
+ public JsonStudyStore(string path){this.path=Path.GetFullPath(path);Directory.CreateDirectory(Path.GetDirectoryName(this.path)!);state=File.Exists(path)?JsonSerializer.Deserialize<State>(File.ReadAllText(path),json)??throw new InvalidDataException():Demo.Seed();}
+ public T Read<T>(Func<State,T> read){lock(gate)return read(JsonSerializer.Deserialize<State>(JsonSerializer.Serialize(state,json),json)!);}
+ public IResult Change(Func<State,IResult> change){lock(gate){var copy=JsonSerializer.Deserialize<State>(JsonSerializer.Serialize(state,json),json)!;var result=change(copy);if(result is Microsoft.AspNetCore.Http.IStatusCodeHttpResult status && status.StatusCode>=400)return result;var tmp=path+".tmp";try {File.WriteAllText(tmp,JsonSerializer.Serialize(copy,json));File.Move(tmp,path,true);} catch(Exception error) when(error is IOException or UnauthorizedAccessException) {return Results.Json(new {error="Local demo storage is unavailable. Your change was not saved. Retry after restoring storage access."},statusCode:503);} state=copy;return result;}}
+}
+public static class Demo {
+
+ public static readonly DemoIdentity[] Identities=[new("alex","Alex • synthetic researcher","Researcher"),new("sam","Sam • synthetic researcher","Researcher"),new("admin","Morgan • synthetic administrator","Administrator"),new("reviewer","Casey • synthetic reviewer","Researcher"),new("lead","Riley • synthetic study lead","Researcher")];
+ public static readonly Dictionary<string,string[]> Groups=new(){{"alex",["demo-group-a"]},{"sam",["demo-group-b"]},{"admin",[]},{"reviewer",["demo-group-a"]},{"lead",["demo-group-a"]}};
+ public static State Seed()=>SeedJourney.Apply(new(){DatasetKind="SyntheticDemo",Studies=[new(){Id="atlas",Title="Atlas • Research methods pilot",Summary="A synthetic workspace exploring reproducible research coordination and clear handoffs.",GroupId="demo-group-a",Items=[new("protocol-1","document","Current protocol","Synthetic protocol v1. Compare two documentation approaches using fictional observations only.",null,null,1,"alex",DateTimeOffset.Parse("2026-09-01T10:00:00Z")),new("orientation-1","documentation","Start here","Review the protocol, introduce your question, and record the next action. Alex is the synthetic study contact.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-01T10:00:00Z")),new("question-1","discussion","How should we structure the handoff?","Propose an outline that keeps assumptions and unresolved questions visible.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-02T10:00:00Z")),new("task-1","task","Review the draft protocol","Owner: Alex (synthetic). Next action: agree the documentation checklist.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-02T10:00:00Z"))]},new(){Id="beacon",Title="Beacon • Historical methods study",Summary="Synthetic historical workspace demonstrating reopening with retained context.",Stage="Paused",GroupId="demo-group-b",Items=[new("beacon-protocol","document","Historical protocol","Synthetic historical record retained for continuation.",null,null,1,"departed-synthetic-author",DateTimeOffset.Parse("2020-01-01T10:00:00Z"))]}]});
+}
+public record DemoIdentity(string Id,string Name,string Role);

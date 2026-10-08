@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "studies": {
+    "synthetic-study": "demo-group-a"
+  },
+  "approved_group_ids": [
+    "demo-group-a"
+  ],
+  "principals": {
+    "synthetic-author": {
+      "historical_label": "Synthetic author",
+      "active": true
+    },
+    "former-member": {
+      "historical_label": "Former synthetic member",
+      "active": false
+    }
+  },
+  "records": [
+    {
+      "study_id": "synthetic-study",
+      "revision": 1,
+      "author_id": "synthetic-author",
+      "original_timestamp": "2020-02-03T10:00:00Z",
+      "acl": {
+        "groups": [
+          "demo-group-a"
+        ],
+        "principals": []
+      },
+      "source_id": "document-1",
+      "kind": "document",
+      "title": "Changed synthetic source without a revision increment",
+      "legacy_url": "https://example.invalid/studies/synthetic/protocol"
+    },
+    {
+      "study_id": "synthetic-study",
+      "revision": 1,
+      "author_id": "synthetic-author",
+      "original_timestamp": "2020-02-03T10:00:00Z",
+      "acl": {
+        "groups": [
+          "demo-group-a"
+        ],
+        "principals": []
+      },
+      "source_id": "version-1",
+      "kind": "version",
+      "parent_id": "document-1",
+      "version_label": "1.0",
+      "content_base64": "U3ludGhldGljIHByb3RvY29sIGRyYWZ0Lgo=",
+      "sha256": "58b8f144e2ed7c2fb90011473cbf534ff2876ce049504f1c7125b186b1f3fb7a",
+      "version_number": 1,
+      "filename": "synthetic-protocol-v1.txt",
+      "title": "Synthetic imported protocol 1.0"
+    },
+    {
+      "study_id": "synthetic-study",
+      "revision": 1,
+      "author_id": "synthetic-author",
+      "original_timestamp": "2020-02-03T10:00:00Z",
+      "acl": {
+        "groups": [
+          "demo-group-a"
+        ],
+        "principals": []
+      },
+      "source_id": "version-2",
+      "kind": "version",
+      "parent_id": "document-1",
+      "version_label": "2.0",
+      "content_base64": "U3ludGhldGljIHByb3RvY29sIHJldmlzaW9uLgo=",
+      "sha256": "9f992aa0e8ca6d7d2910dca886f56838fc8315b1b5af645c48148a282a7c5dd8",
+      "version_number": 2,
+      "filename": "synthetic-protocol-v2.txt",
+      "title": "Synthetic imported protocol 2.0"
+    },
+    {
+      "study_id": "synthetic-study",
+      "revision": 1,
+      "author_id": "synthetic-author",
+      "original_timestamp": "2020-02-03T10:00:00Z",
+      "acl": {
+        "groups": [
+          "demo-group-a"
+        ],
+        "principals": []
+      },
+      "source_id": "thread-1",
+      "kind": "discussion",
+      "body": "Which revision should guide the next rehearsal?",
+      "references": [
+        "version-1"
+      ],
+      "title": "Imported protocol discussion"
+    },
+    {
+      "study_id": "synthetic-study",
+      "revision": 1,
+      "author_id": "former-member",
+      "original_timestamp": "2020-02-03T10:00:00Z",
+      "acl": {
+        "groups": [
+          "demo-group-a"
+        ],
+        "principals": []
+      },
+      "source_id": "reply-1",
+      "kind": "reply",
+      "parent_id": "thread-1",
+      "body": "Keep the earlier rationale and use the revised protocol.",
+      "title": "Historical synthetic reply"
+    },
+    {
+      "study_id": "synthetic-study",
+      "revision": 1,
+      "author_id": "synthetic-author",
+      "original_timestamp": "2020-02-03T10:00:00Z",
+      "acl": {
+        "groups": [
+          "demo-group-a"
+        ],
+        "principals": []
+      },
+      "source_id": "attachment-1",
+      "kind": "attachment",
+      "parent_id": "reply-1",
+      "filename": "synthetic-notes.txt",
+      "content_base64": "U3ludGhldGljIGF0dGFjaG1lbnQgb25seS4K",
+      "sha256": "cce44e048f2b11bb09885b6f2223a42fec2083619b88db167b60179340709b9e"
+    },
+    {
+      "study_id": "synthetic-study",
+      "revision": 1,
+      "author_id": "synthetic-author",
+      "original_timestamp": "2020-02-03T10:00:00Z",
+      "acl": {
+        "groups": [
+          "demo-group-a"
+        ],
+        "principals": []
+      },
+      "source_id": "decision-1",
+      "kind": "decision",
+      "body": "Use protocol 2.0 for this synthetic rehearsal.",
+      "references": [
+        "version-2",
+        "reply-1"
+      ],
+      "title": "Imported evidenced decision"
+    }
+  ]
+}

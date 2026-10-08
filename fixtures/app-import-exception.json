@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "studies": {
+    "synthetic-study": "demo-group-a"
+  },
+  "approved_group_ids": [
+    "demo-group-a"
+  ],
+  "principals": {
+    "synthetic-author": {
+      "historical_label": "Synthetic author",
+      "active": true
+    },
+    "former-member": {
+      "historical_label": "Former synthetic member",
+      "active": false
+    }
+  },
+  "records": [
+    {
+      "study_id": "synthetic-study",
+      "revision": 1,
+      "author_id": "unresolved-synthetic-author",
+      "original_timestamp": "2020-02-03T10:00:00Z",
+      "acl": {
+        "groups": [
+          "demo-group-a"
+        ],
+        "principals": []
+      },
+      "source_id": "unresolved-discussion-1",
+      "kind": "discussion",
+      "body": "Demonstration record held for operator review.",
+      "references": [],
+      "title": "Unresolved synthetic attribution"
+    }
+  ]
+}
