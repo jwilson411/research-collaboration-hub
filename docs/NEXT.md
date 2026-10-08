@@ -2,11 +2,11 @@
 
 ## Next useful local milestone
 
-Extend the accessible brainstorming list into named sessions with explicit purpose, responsible participant, item editing/history and keyboard ordering. Preserve idea-to-decision links in both directions, and provide a readable, access-checked session summary. Use list controls before adding drag-only or spatial interaction.
+Add explicit decision supersession: preserve rationale, alternatives, responsible participant, effective date and exact evidence while showing which decision replaced an earlier one. Current generic decision records have attribution and exact evidence, but no governed replacement chain. Keep this a collaboration record, not formal study approval.
 
-Pair this with a concise returning-collaborator checklist: current working guidance, latest handoff, unresolved questions, responsible study contact and next action. Existing living documentation and seeded handoff cover the foundation; a personal completion state and clear resume point are still absent. Keep onboarding independent from editable directory membership.
+Acceptance criteria: a replacement retains the exact earlier decision and source idea/document/file revisions; stale or repeated replacement requests cannot fork or duplicate the chain; superseded decisions remain discoverable with clear status; cross-study and deleted evidence are rejected; handoffs preserve the state at capture; keyboard/mobile flows make the current guidance unambiguous.
 
-Acceptance criteria: complete the session entirely by keyboard at mobile width; concurrent edits preserve drafts; repeated/restarted saves do not duplicate ideas; summary and direct URLs enforce study access and removal; decisions retain the exact source idea revision. No canvas, AI or messaging integration is needed for this bounded milestone.
+After that, prioritize governed document templates and explicit resource pointers with owner/source/last-verified date. The current workspace has reusable seeded guidance but no governed template selection or resource-verification lifecycle. Avoid adding speculative integrations.
 
 ## Recovery and import follow-up
 
@@ -19,5 +19,9 @@ Acceptance criteria: complete the session entirely by keyboard at mobile width; 
 - Exercise the SQL snapshot adapter against an approved disposable SQL Server: concurrency, failure ambiguity, schema, restart and recovery. It is still a bounded single-row preview adapter; normalize entities before scale claims.
 - Implement the approved production identity adapter using stable group SIDs, authoritative membership, tested revocation/outage behavior and explicit IIS registration. Keep Production blocked meanwhile.
 - Validate Windows/IIS, application subpaths, persisted Data Protection keys, keyboard and screen-reader journeys, deployment rollback and operational recovery on the approved target.
+
+## Decisions needed from the deploying organization
+
+Confirm the production role and approval matrix, records/retention rules for removed and superseded content, approved malware scanning/release process, and migration-source scope with acceptance criteria. These choices cannot be inferred from a synthetic demonstration. Access to an approved Windows/IIS/domain and disposable SQL environment is also needed for the separate integration gates above.
 
 The repository remains a draft implementation. AI and messaging integrations stay disabled and are independent decisions. No current test establishes production or accessibility compliance.

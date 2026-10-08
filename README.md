@@ -28,6 +28,8 @@ Fresh state includes an entirely synthetic checklist-review and handoff journey.
 6. To rehearse ingestion, Morgan grants Alex the Administrator application role. Alex still has only Atlas study access. Return as Alex, open Atlas's Activity & lifecycle → Synthetic import rehearsal, choose `fixtures/app-import.json`, preview all record outcomes, then apply. Inspect the imported file versions, historical thread/reply, attachment and decision evidence. Repeat the manifest: no duplicate records or versions are created.
 7. Submit edits from two tabs. A stale submission is rejected and its draft stays in the form. Stop/restart: saved state persists.
 
+Explore [brainstorming sessions and personal orientation](docs/BRAINSTORMING-ONBOARDING.md) for the next part of the synthetic journey: keyboard ordering, exact idea-to-decision evidence, archive/reopen, and context-aware personal checklists.
+
 ## Persistence and attachments
 
 The default single-process JSON provider stores metadata in `.data/hub.json`; `HUB_DATA` overrides it. Immutable file bytes live in sibling `.hub-files`, **outside the application directory**, or an explicit `HUB_FILES` directory. Back up metadata and blobs together while the preview is stopped. Do not store attachment bytes in webroot or the application directory. Ignored local data and screenshots are not published.

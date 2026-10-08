@@ -94,6 +94,7 @@ public static class HandoffEndpoints
                 visitedItems.Add(id);
                 if (item.ParentId is not null) items.Add(item.ParentId);
                 if (item.DocumentId is not null) items.Add(item.DocumentId);
+                if (item.BoardDecision is not null) items.Add(item.BoardDecision.IdeaVersionId);
                 foreach (var reference in item.Task?.Links ?? []) items.Add(reference);
                 foreach (var reference in item.FileIds.Concat(item.Task?.FileLinks ?? [])) files.Add(reference);
                 foreach (var reference in item.Provenance?.ReferenceTargetIds ?? [])

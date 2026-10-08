@@ -234,9 +234,13 @@ class Ingestion(unittest.TestCase):
         # New optional document metadata must not change legacy imported-item fingerprints.
         initial = next(i for i in self.study()['items'] if i['id'] == decision)
         self.assertNotIn('documentVersion', initial)
+        self.assertNotIn('boardIdea', initial)
+        self.assertNotIn('boardDecision', initial)
         persisted = json.loads(self.data.read_text())
         persisted_item = next(i for s in persisted['studies'] if s['id'] == 'atlas' for i in s['items'] if i['id'] == decision)
         self.assertNotIn('documentVersion', persisted_item)
+        self.assertNotIn('boardIdea', persisted_item)
+        self.assertNotIn('boardDecision', persisted_item)
         batch = copy.deepcopy(self.manifest); batch['records'] = [dict(batch['records'][6], revision=2, body='Synthetic amended rationale')]
         _, updated = self.apply(batch); self.assertEqual(updated['counts']['imported'], 1)
         record = next(i for i in self.study()['items'] if i['id'] == decision)

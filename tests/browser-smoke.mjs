@@ -19,7 +19,25 @@ page.on('pageerror',e=>errors.push(e.message));
 context.on('request',r=>{if(new URL(r.url()).origin!==url.origin)external.push(r.url());});
 const saved=async p=>{await p.locator('#task-form, #upload-form, #item-form, #document-form, #document-state-form').waitFor({state:'detached'});await p.getByText('Saved. The shared record has been updated.',{exact:true}).waitFor();};
 const reflow=async p=>assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth),await p.evaluate(()=>innerWidth),'Page must not overflow viewport');
+// Focus mode rechecks navigation against the disposable state created by the full suite.
+async function verifyExactIdeaLinks(){
+ await page.goto(base);await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();
+ let exactVersion;
+ for(let pass=0;pass<2;pass++){
+  await page.locator('#search').fill('Checklist first');await page.locator('#search-form').getByRole('button',{name:'Search',exact:true}).click();await page.getByRole('heading',{name:'Search results',exact:true}).waitFor();
+  const result=page.getByRole('link',{name:'Checklist first',exact:true});const href=await result.getAttribute('href');assert.match(href,/\/idea\/board-[^/]+\/[^/]+$/);exactVersion=decodeURIComponent(href.split('/').at(-1));
+  await result.click();await page.locator('#board-version-'+exactVersion).waitFor();assert.equal(await page.locator(':focus').getAttribute('id'),'board-version-'+exactVersion);assert.match(await page.locator('#board-version-'+exactVersion).innerText(),/Checklist first/);
+ }
+ await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();await page.getByRole('button',{name:'Add task',exact:true}).click();
+ await page.getByLabel('Task title',{exact:true}).fill('Follow the original brainstorming proposal');await page.getByLabel('Next action and context',{exact:true}).fill('Preserve the exact original idea as the supporting reference.');
+ await page.locator('input[name=links][value="'+exactVersion+'"]').check();await page.getByRole('button',{name:'Save task',exact:true}).click();await saved(page);
+ const record=page.locator('article.record').filter({has:page.getByRole('heading',{name:'Follow the original brainstorming proposal',exact:true})}).last();
+ await record.getByRole('link',{name:'Checklist first · idea version 1',exact:true}).click();await page.locator('#board-version-'+exactVersion).waitFor();assert.equal(await page.locator(':focus').getAttribute('id'),'board-version-'+exactVersion);
+ await page.screenshot({path:`${output}/exact-idea-reference.png`,fullPage:true});
+ console.log('PASS: search and same-hash search reopen the exact historical idea version; task evidence focuses the same version.');
+}
 try {
+ if(process.env.HUB_BROWSER_FOCUS==='idea-links'){await verifyExactIdeaLinks();assert.deepEqual(errors,[]);assert.deepEqual(external,[]);}else{
  await page.goto(base); await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();
  await page.keyboard.press('Tab'); assert.equal(await page.locator(':focus').innerText(),'Skip to main content');
  await page.keyboard.press('Enter'); assert.equal(await page.locator(':focus').getAttribute('id'),'main');
@@ -99,6 +117,7 @@ try {
  await page.screenshot({path:`${output}/files-mobile.png`,fullPage:true});
  await page.locator('#identity').selectOption('admin'); await page.getByRole('heading',{name:'No study access',exact:true}).waitFor();
  await page.getByRole('link',{name:'Administration',exact:true}).click(); await page.getByRole('heading',{name:'Access & configuration',exact:true}).waitFor(); await reflow(page);
+ console.log('PASS: task, file and protocol workflows');
  // Administrative role does not grant study membership. Use two tabs to exercise stale configuration.
  await page.getByLabel('Synthetic identity',{exact:true}).selectOption('alex');
  await page.getByLabel('Application role',{exact:true}).selectOption('Administrator');
@@ -149,6 +168,7 @@ try {
  await page.locator('#identity').selectOption('alex');await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();await page.getByRole('link',{name:'Open workspace'}).click();await page.getByRole('heading',{name:'At a glance',exact:true}).waitFor();await page.getByRole('link',{name:'Discussions',exact:true}).click();
 
  await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:`${output}/imported-discussion-desktop.png`,fullPage:true});
+ console.log('PASS: configuration concurrency and connected import fidelity');
  // Stable text families and study-specific review roles are independent of application administration.
  const switchStudyIdentity=async identity=>{await page.locator('#identity').selectOption(identity);await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();await page.getByRole('link',{name:'Open workspace'}).click();await page.getByRole('heading',{name:'At a glance',exact:true}).waitFor();await page.getByRole('link',{name:'Document library',exact:true}).click();};
  const documentRecord=title=>page.locator('article.record').filter({has:page.getByRole('heading',{name:title,exact:true})});
@@ -181,6 +201,7 @@ try {
  assert.match(await documentRecord('Revised orientation packet').locator('.task-facts').innerText(),/Superseded/i);
  await page.setViewportSize({width:390,height:844});await reflow(page);
  await page.screenshot({path:`${output}/document-review-mobile.png`,fullPage:true});
+ console.log('PASS: stable document families and study review roles');
  // Capture once, then change live task/state. The returned captured packet stays byte-for-byte equivalent.
  await page.getByRole('link',{name:'Handoff snapshots',exact:true}).click();
  const seededSnapshot=page.locator('#handoff-list article').filter({has:page.getByRole('heading',{name:'Orientation handoff • synthetic example',exact:true})});
@@ -221,6 +242,88 @@ try {
  await page.locator('#handoff-detail').getByRole('heading',{name:'Reviewed orientation handoff',exact:true}).waitFor();assert.equal(await page.locator('#handoff-detail').innerText(),capturedText);
  assert.equal(await page.locator('#handoff-detail').getByText('Live task changed after the fixed handoff capture.',{exact:true}).count(),0);
  await reflow(page);await page.screenshot({path:`${output}/handoff-mobile.png`,fullPage:true});
+ console.log('PASS: immutable handoff and lifecycle recovery');
+ // Returning collaborators retain personal acknowledgments without sharing them with peers.
+ await page.getByRole('link',{name:'Overview',exact:true}).click();
+ await page.getByRole('heading',{name:'Your study orientation',exact:true}).waitFor();
+ const firstStep=page.locator('[data-onboarding-step]:not([disabled])').first();
+ const orientationId=await firstStep.getAttribute('id');assert.equal(await firstStep.isChecked(),false);
+ const initialResume=await page.locator('.orientation-resume a').getAttribute('href');
+ await firstStep.focus();const acknowledged=page.waitForResponse(r=>r.url().endsWith('/onboarding')&&r.request().method()==='POST');
+ await page.keyboard.press('Space');assert.equal((await acknowledged).status(),200);
+ await page.getByText('Orientation step acknowledged for the current evidence.',{exact:true}).waitFor();
+ assert.equal(await page.locator(':focus').getAttribute('id'),orientationId);
+ await page.reload();await page.getByRole('heading',{name:'Your study orientation',exact:true}).waitFor();assert.equal(await page.locator('#'+orientationId).isChecked(),true);
+ const nextResume=await page.locator('.orientation-resume a').getAttribute('href');assert.notEqual(nextResume,initialResume);await page.locator('.orientation-resume a').click();await page.waitForURL(current=>current.hash===nextResume);await page.getByRole('link',{name:'Overview',exact:true}).click();await page.getByRole('heading',{name:'Your study orientation',exact:true}).waitFor();
+ await switchStudyIdentity('alex');await page.getByRole('link',{name:'Overview',exact:true}).click();await page.getByRole('heading',{name:'Your study orientation',exact:true}).waitFor();assert.equal(await page.locator('#'+orientationId).isChecked(),false);
+ const alexStep=page.locator('[data-onboarding-step]:not([disabled])').nth(1);const alexStepId=await alexStep.getAttribute('id');
+ const alexAcknowledged=page.waitForResponse(r=>r.url().endsWith('/onboarding')&&r.request().method()==='POST');await alexStep.check();assert.equal((await alexAcknowledged).status(),200);
+ await page.getByText('Orientation step acknowledged for the current evidence.',{exact:true}).waitFor();
+ await switchStudyIdentity('lead');await page.getByRole('link',{name:'Overview',exact:true}).click();await page.getByRole('heading',{name:'Your study orientation',exact:true}).waitFor();
+ assert.equal(await page.locator('#'+orientationId).isChecked(),true);assert.equal(await page.locator('#'+alexStepId).isChecked(),false);
+ for(let n=0;n<8&&await page.locator('[data-onboarding-step]:not([disabled]):not(:checked)').count();n++){const box=page.locator('[data-onboarding-step]:not([disabled]):not(:checked)').first();const oldBox=await box.elementHandle();const response=page.waitForResponse(r=>r.url().endsWith('/onboarding')&&r.request().method()==='POST');await box.check();assert.equal((await response).status(),200);await page.waitForFunction(input=>!input.isConnected,oldBox);}
+ await page.getByText('You have reviewed every currently available step. Return when the study evidence changes.',{exact:true}).waitFor();
+
+ await reflow(page);assert.equal(await page.getByRole('main').count(),1);
+ if(process.env.HUB_BROWSER_AXE==='true'){const AxeBuilder=require('@axe-core/playwright').default;const audit=await new AxeBuilder({page}).analyze();assert.deepEqual(audit.violations.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)})),[]);}
+ await page.screenshot({path:`${output}/returning-collaborator-mobile.png`,fullPage:true});
+ console.log('PASS: personal returning-collaborator persistence, isolation and keyboard focus');
+ await page.getByRole('link',{name:'Ideas & whiteboards',exact:true}).click();
+ await page.getByRole('button',{name:'New session',exact:true}).click();
+ await page.getByLabel('Session title',{exact:true}).fill('Prepare the next orientation');
+ await page.getByLabel('Session purpose',{exact:true}).fill('Compare two practical ways to preserve context for returning collaborators.');
+ await page.getByLabel('Responsible participant',{exact:true}).selectOption('lead');
+ await page.getByRole('button',{name:'Save session',exact:true}).click();
+ await page.locator('#board-title').getByText('Prepare the next orientation',{exact:true}).waitFor();
+ const boardUrl=page.url();
+ const createIdea=async(title,body)=>{await page.getByRole('button',{name:'Add idea',exact:true}).click();await page.getByLabel('Idea title',{exact:true}).fill(title);await page.getByLabel('Idea content',{exact:true}).fill(body);await page.getByRole('button',{name:'Save idea',exact:true}).click();await page.locator('#board-idea-form').waitFor({state:'detached'});await page.locator('.board-idea-card').filter({has:page.getByRole('heading',{name:title,exact:true})}).waitFor();};
+ await createIdea('Checklist first','Start with a brief checklist and retain the linked evidence.');
+ await createIdea('Conversation first','Start by reading the unresolved conversation.');
+ let ideaCard=page.locator('.board-idea-card').filter({has:page.getByRole('heading',{name:'Checklist first',exact:true})});
+ const logicalIdeaId=await ideaCard.getAttribute('data-idea');
+ const reorderResponse=page.waitForResponse(r=>r.url().endsWith('/reorder')&&r.request().method()==='POST');
+ await ideaCard.getByRole('button',{name:'Move Checklist first down',exact:true}).focus();await page.keyboard.press('Enter');assert.equal((await reorderResponse).status(),200);
+ await page.locator('#board-live').getByText('Checklist first moved to position 2 of 2.',{exact:true}).waitFor();
+ assert.equal(await page.locator(':focus').getAttribute('id'),'board-idea-'+logicalIdeaId);
+ assert.equal(await page.locator('.board-ordered-list > li').nth(1).getAttribute('data-idea'),logicalIdeaId);
+ await ideaCard.getByRole('button',{name:'Edit idea',exact:true}).click();
+ await page.getByLabel('Idea title',{exact:true}).fill('Checklist with accountable owners');
+ await page.getByLabel('Idea content',{exact:true}).fill('Keep the brief checklist and show the owner of each unresolved action.');
+ await page.getByRole('button',{name:'Save idea',exact:true}).click();await page.locator('#board-idea-form').waitFor({state:'detached'});
+ ideaCard=page.locator('.board-idea-card').filter({has:page.getByRole('heading',{name:'Checklist with accountable owners',exact:true})});
+ await ideaCard.getByText('Idea history & decisions (2 versions)',{exact:true}).click();assert.match(await ideaCard.innerText(),/Start with a brief checklist/);
+ const historicalDecision=ideaCard.getByRole('button',{name:'Decide from version 1',exact:true});const sourceVersion=await historicalDecision.getAttribute('data-version');await historicalDecision.click();
+ await page.getByLabel('Decision title',{exact:true}).fill('Use the original checklist as the baseline');
+ await page.getByLabel('Decision and rationale',{exact:true}).fill('The first proposal is the baseline; owner detail remains an alternative revision.');
+ await page.getByRole('button',{name:'Save linked decision',exact:true}).click();await page.locator('#board-decision-form').waitFor({state:'detached'});
+ await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();
+ const boardDecision=page.locator('article.record').filter({has:page.getByRole('heading',{name:'Use the original checklist as the baseline',exact:true})});await boardDecision.waitFor();
+ assert.match(await boardDecision.innerText(),/Exact idea version 1/);assert((await boardDecision.innerText()).includes(sourceVersion));
+ await boardDecision.getByRole('link',{name:'View source session',exact:true}).click();await page.locator('#board-title').getByText('Prepare the next orientation',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Readable summary',exact:true}).click();await page.getByRole('heading',{name:'Readable session summary',exact:true}).waitFor();
+ assert.equal(await page.locator(':focus').getAttribute('class'),'board-readable');assert.match(await page.locator('.board-readable').innerText(),/cites idea version 1/);
+ const summaryDownload=page.waitForEvent('download');await page.getByRole('link',{name:'Download summary',exact:true}).click();const summaryText=await readFile(await(await summaryDownload).path(),'utf8');
+ assert.match(summaryText,/Checklist first/);assert.match(summaryText,/Checklist with accountable owners/);assert.match(summaryText,/Use the original checklist as the baseline/);
+ await page.getByRole('button',{name:'Archive session',exact:true}).click();await page.getByLabel('Reason for session-state change',{exact:true}).fill('Pause this session while its baseline is reviewed.');
+ await page.getByRole('button',{name:'Confirm archive',exact:true}).click();await page.locator('#board-state-form').waitFor({state:'detached'});
+ assert.equal(await page.getByRole('button',{name:'Add idea',exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'Edit idea',exact:true}).count(),0);
+ await page.getByRole('button',{name:'Readable summary',exact:true}).click();await page.getByRole('heading',{name:'Readable session summary',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Reopen session',exact:true}).click();await page.getByLabel('Reason for session-state change',{exact:true}).fill('Resume the next orientation discussion.');await page.getByRole('button',{name:'Confirm reopen',exact:true}).click();await page.locator('#board-state-form').waitFor({state:'detached'});
+ await page.getByRole('link',{name:'Activity & lifecycle',exact:true}).click();
+ const closedForm=await page.locator('#stage-form').elementHandle();await page.getByLabel('Workspace stage',{exact:true}).selectOption('Closed');
+ const studyClose=page.waitForResponse(r=>r.url().endsWith('/stage')&&r.request().method()==='POST');await page.getByRole('button',{name:'Update stage',exact:true}).click();assert.equal((await studyClose).status(),200);await page.waitForFunction(form=>!form.isConnected,closedForm);
+ await page.goto(boardUrl);await page.locator('#board-title').getByText('Prepare the next orientation',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Add idea',exact:true}).click();await page.getByLabel('Idea title',{exact:true}).fill('Draft while closed');await page.getByLabel('Idea content',{exact:true}).fill('Preserve this draft when the closed study rejects editing.');
+ const closedIdea=page.waitForResponse(r=>r.url().endsWith('/ideas')&&r.request().method()==='POST');await page.getByRole('button',{name:'Save idea',exact:true}).click();assert.equal((await closedIdea).status(),409);
+ await page.getByText('Your draft is retained.',{exact:false}).waitFor();assert.equal(await page.getByLabel('Idea title',{exact:true}).inputValue(),'Draft while closed');
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('link',{name:'Activity & lifecycle',exact:true}).click();
+ const reopenedForm=await page.locator('#stage-form').elementHandle();await page.getByLabel('Workspace stage',{exact:true}).selectOption('Active');const studyReopen=page.waitForResponse(r=>r.url().endsWith('/stage')&&r.request().method()==='POST');await page.getByRole('button',{name:'Update stage',exact:true}).click();assert.equal((await studyReopen).status(),200);await page.waitForFunction(form=>!form.isConnected,reopenedForm);
+ await page.goto(boardUrl);await page.locator('#board-title').getByText('Prepare the next orientation',{exact:true}).waitFor();await createIdea('Resume with context','Continue the reopened study without losing earlier reasoning.');
+ await reflow(page);assert.equal(await page.locator('#board-live').getAttribute('role'),'status');assert.equal(await page.locator('#board-live').getAttribute('aria-live'),'polite');
+ if(process.env.HUB_BROWSER_AXE==='true'){const AxeBuilder=require('@axe-core/playwright').default;const audit=await new AxeBuilder({page}).analyze();assert.deepEqual(audit.violations.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)})),[]);}
+ await page.screenshot({path:`${output}/brainstorm-session-mobile.png`,fullPage:true});
+ await verifyExactIdeaLinks();
  assert.deepEqual(errors,[]); assert.deepEqual(external,[]);
- console.log('PASS: keyboard skip link, structured task create/edit/history/evidence, conflict draft recovery, identity isolation, mobile reflow, upload/download bytes and versions, quarantine, oversize error, explicit protocol retention, exact file citations, stale admin rejection, connected import preview/apply/repeat, stable document families and review roles, immutable handoff after edits and lifecycle changes, no page errors or external requests.');
+ console.log('PASS: keyboard skip link, structured task create/edit/history/evidence, conflict draft recovery, identity isolation, mobile reflow, upload/download bytes and versions, quarantine, oversize error, explicit protocol retention, exact file citations, stale admin rejection, connected import preview/apply/repeat, stable document families and review roles, immutable handoff after edits and lifecycle changes, personal onboarding isolation, keyboard idea sessions and exact decision provenance, session/study lifecycle recovery, no page errors or external requests.');
+}
 } finally {await browser.close();}

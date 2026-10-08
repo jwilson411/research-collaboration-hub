@@ -11,7 +11,9 @@ Local implementation is distinct from production readiness. Demo policy choices 
 | Discussions | Nested replies and file attachments; parent deletion hides attachments | Moderation and records policy |
 | Tasks | Assignee, date, status, exact item/file-version links, revision history, conflict/retry protection | Approved role semantics and directory revocation |
 | Handoffs | Immutable bounded captures of exact evidence, current tasks, decisions and questions; current-access/removal projection | Recovery, reviewed export/retention policy |
-| Decisions and ideas | Attributable records; linked idea-to-decision workflow | Supersession, richer accessible board exports |
+| Brainstorming | Named persistent sessions, immutable idea versions, keyboard ordering, session history, readable/export summary and exact decision links | Screen-reader acceptance and richer collaboration policies |
+| Decisions | Attributable rationale and exact source idea/document/file references | Explicit supersession and approved decision lifecycle |
+| Onboarding | Private context-bound checklist, saved completion/time, resume link and synthetic contact | Real directory contacts and approved orientation policy |
 | Lifecycle | Active/Paused/Closed with reopening and retained history | Approved lifecycle role matrix |
 | Search/download | Server-side membership checks; deleted content unavailable | Production index and revocation tests |
 | Administration | Roles, group mappings, effective access, audited configuration revisions and replay protection | Real SIDs, immutable audit and approved separation of duties |

@@ -130,7 +130,12 @@ class Integration(unittest.TestCase):
             self.assertEqual(client.request(f"/api/studies/{study}/documents/{document}/download")[0], 404)
             self.assertEqual(client.request(f"/api/studies/{study}/items", self.item())[0], 404)
             self.assertEqual(client.request(f"/api/studies/{study}/stage", dict(stage="Active", expectedRevision=1, requestId=str(uuid.uuid4())))[0], 404)
-        self.assertEqual(self.alex.request("/api/search?q=Historical")[1], [])
+        # A shared word may legitimately occur in accessible synthetic content.
+        for client, allowed in [(self.alex, "atlas"), (self.sam, "beacon")]:
+            hits = client.request("/api/search?q=Historical")[1]
+            self.assertTrue(all(hit["studyId"] == allowed for hit in hits))
+        self.assertEqual(self.alex.request("/api/search?q=Historical%20protocol")[1], [])
+        self.assertTrue(any(hit["item"]["id"] == "beacon-protocol" for hit in self.sam.request("/api/search?q=Historical%20protocol")[1]))
         self.assertEqual(self.admin.request("/api/search")[1], [])
         for client in [self.alex, self.sam]:
             self.assertEqual(client.request("/api/admin")[0], 403)
