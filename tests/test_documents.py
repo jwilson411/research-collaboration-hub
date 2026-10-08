@@ -70,6 +70,8 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(next(i for i in self.study()['items'] if i['id']==original['id']),original)
         self.assertEqual(self.alex.request(f"/api/studies/atlas/items/{original['id']}/delete",dict(expectedRevision=self.study()['revision'],requestId=str(uuid.uuid4())))[0],409)
         type(self).stop();type(self).start()
+        self.assertEqual(self.alex.request("/api/studies/atlas/documents")[0],409)
+        self.alex.login("alex")
         self.assertEqual(self.version_state(original)['status'],'Superseded')
         self.assertEqual(self.version_state(second)['status'],'Accepted')
 

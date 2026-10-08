@@ -122,7 +122,7 @@ class Provisioning(unittest.TestCase):
     def test_unmarked_dataset_fails_closed_without_relabeling(self):
         self.create()
         self.stop();original=self.data.read_bytes();state=json.loads(original);state.pop('datasetKind')
-        self.data.write_text(json.dumps(state));self.start()
+        self.data.write_text(json.dumps(state));self.start();self.admin=api.Client().login('admin')
         try:
             before=self.data.read_bytes()
             self.assertEqual(self.admin.request('/api/admin/studies',self.payload())[0],503)

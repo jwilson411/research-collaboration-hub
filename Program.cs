@@ -10,6 +10,7 @@ if (builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any()) t
 builder.WebHost.ConfigureKestrel(options => options.Configure(new ConfigurationBuilder().Build(), reloadOnChange: false));
 builder.WebHost.UseUrls("http://127.0.0.1:5080");
 builder.Services.AddSingleton<AttachmentStorage>();
+builder.Services.AddSingleton<DemoSessionStore>();
 builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.Name = "hub.csrf"; o.Cookie.SameSite = SameSiteMode.Strict; });
 var provider=Environment.GetEnvironmentVariable("HUB_STORAGE_PROVIDER") ?? "Json";
 if(provider is not ("Json" or "SqlServer"))throw new InvalidOperationException("Unknown storage provider.");
@@ -50,14 +51,15 @@ app.Use(async (ctx, next) => {
  }
  try { await next(); } catch (BadHttpRequestException) { ctx.Response.StatusCode=400; } catch (JsonException) { ctx.Response.StatusCode=400; }
 });
+app.Use((context,next)=>context.RequestServices.GetRequiredService<DemoSessionStore>().Invoke(context,next));
 app.UseDefaultFiles(); app.UseStaticFiles();
-string Identity(HttpContext c) => c.Request.Cookies["hub.identity"] is string id && Demo.Identities.Any(x=>x.Id==id) ? id : "alex";
+string Identity(HttpContext c) => DemoSessionStore.Actor(c);
 bool Access(State state,string user,Study study) => Demo.Groups.GetValueOrDefault(user, []).Contains(study.GroupId);
 bool Admin(State state,string user) => state.Roles.GetValueOrDefault(user)=="Administrator";
-app.MapGet("/api/session", (HttpContext c,IAntiforgery anti,IStudyStore store) => store.Read(s=>new {user=new {id=Identity(c),name=Demo.Identities.Single(x=>x.Id==Identity(c)).Name,role=s.Roles.GetValueOrDefault(Identity(c),"Researcher")},identities=Demo.Identities,csrf=anti.GetAndStoreTokens(c).RequestToken}));
+app.MapGet("/api/session", (HttpContext c,IAntiforgery anti,IStudyStore store) => store.Read(s=>new {user=new {id=Identity(c),name=Demo.Identities.Single(x=>x.Id==Identity(c)).Name,role=s.Roles.GetValueOrDefault(Identity(c),"Researcher")},identities=Demo.Identities,csrf=anti.GetAndStoreTokens(c).RequestToken,sessionContext=DemoSessionStore.Generation(c),authorizationContext=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new {revision=s.ConfigRevision,actor=Identity(c),role=s.Roles.GetValueOrDefault(Identity(c),"Researcher"),groups=Demo.Groups.GetValueOrDefault(Identity(c),[]).OrderBy(group=>group)}))))}));
 app.MapPost("/api/session", (HttpContext c,SessionInput input) => {
  if (!Demo.Identities.Any(x=>x.Id==input.Identity)) return Results.BadRequest(new {error="Unknown synthetic identity"});
- c.Response.Cookies.Append("hub.identity",input.Identity,new CookieOptions {HttpOnly=true,SameSite=SameSiteMode.Strict,IsEssential=true}); return Results.Ok();
+ DemoSessionStore.Switch(c,input.Identity); return Results.Ok();
 });
 app.MapGet("/api/studies",(HttpContext c,IStudyStore store)=>store.Read(s=>s.Studies.Where(x=>Access(s,Identity(c),x)).ToArray()));
 app.MapGet("/api/studies/{id}",(string id,HttpContext c,IStudyStore store)=>store.Read<IResult>(s=>s.Studies.FirstOrDefault(x=>x.Id==id && Access(s,Identity(c),x)) is {} study ? Results.Ok(study) : Results.NotFound()));

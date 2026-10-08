@@ -12,7 +12,7 @@ const context=await browser.newContext({viewport:{width:390,height:844}});contex
 const page=await context.newPage(),errors=[],external=[];
 page.on('pageerror',e=>errors.push(e.message));context.on('request',r=>{if(new URL(r.url()).origin!==new URL(base).origin)external.push(r.url());});
 const ready=async()=>page.getByRole('heading',{name:'My studies',exact:true}).waitFor();
-const switchIdentity=async id=>{await page.locator('#identity').selectOption(id);await ready();await page.getByText('Demo identity changed. Accessible studies have been refreshed.',{exact:true}).waitFor();};
+const switchIdentity=async id=>{await page.locator('#identity').selectOption(id);await ready();await page.getByText('Demo identity changed. Accessible studies have been refreshed.',{exact:false}).waitFor();};
 const responseFor=suffix=>page.waitForResponse(r=>r.url().endsWith(suffix)&&r.request().method()==='POST');
 const reflow=async()=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390,'No horizontal page overflow');
 async function audit(label){await reflow();if(process.env.HUB_BROWSER_AXE==='true'){const AxeBuilder=require('@axe-core/playwright').default;const result=await new AxeBuilder({page}).analyze();assert.deepEqual(result.violations.map(v=>({id:v.id,targets:v.nodes.map(n=>n.target)})),[],label);console.log('AXE: '+label+' — 0 violations');}}

@@ -137,15 +137,15 @@ try {
  await page.locator('#role-form').getByRole('option',{name:'Alex • synthetic researcher (Administrator)',exact:true}).waitFor({state:'attached'});
  const staleAdmin=await context.newPage();await staleAdmin.goto(base+'/#admin');await staleAdmin.getByRole('heading',{name:'Access & configuration',exact:true}).waitFor();
  const staleRevision=await staleAdmin.locator('#mapping-form').getAttribute('data-revision');
+ await staleAdmin.getByLabel('Stable group identifier',{exact:true}).fill('demo-group-b');await page.bringToFront();
  // Saving an unchanged mapping advances configuration while leaving the boundary intact.
  const map=page.waitForResponse(r=>r.url().endsWith('/api/admin/mapping')&&r.request().method()==='POST');
  await page.getByRole('button',{name:'Save mapping',exact:true}).click();assert.equal((await map).status(),200);
  await page.waitForFunction(old=>document.querySelector('#mapping-form')?.dataset.revision!==old,staleRevision);
- await staleAdmin.getByLabel('Stable group identifier',{exact:true}).fill('demo-group-b');
- const denied=staleAdmin.waitForResponse(r=>r.url().endsWith('/api/admin/mapping')&&r.request().method()==='POST');
- await staleAdmin.getByRole('button',{name:'Save mapping',exact:true}).click();assert.equal((await denied).status(),409);
- assert.equal(await staleAdmin.getByLabel('Stable group identifier',{exact:true}).inputValue(),'demo-group-b');
- await staleAdmin.close();
+ await staleAdmin.bringToFront();await staleAdmin.getByRole('heading',{name:'Retained drafts for this identity',exact:true}).waitFor();
+ const retainedMapping=staleAdmin.waitForEvent('download');await staleAdmin.getByRole('button',{name:/^Download retained draft/}).click();assert.match(await readFile(await(await retainedMapping).path(),'utf8'),/demo-group-b/);
+ const adminSession=await(await context.request.get(base+'/api/session')).json();const denied=await context.request.post(base+'/api/admin/mapping',{headers:{'X-CSRF-TOKEN':adminSession.csrf,'X-HUB-SESSION':adminSession.sessionContext},data:{studyId:'atlas',groupId:'demo-group-b',expectedRevision:Number(staleRevision),requestId:crypto.randomUUID()}});assert.equal(denied.status(),409);
+ await staleAdmin.close();await page.bringToFront();
  await page.locator('#identity').selectOption('alex');await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();
  assert.equal(await page.getByRole('link',{name:'Open workspace'}).count(),1);
  assert.equal(await page.getByText('Beacon • Historical methods study',{exact:true}).count(),0);

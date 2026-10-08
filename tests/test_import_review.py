@@ -31,7 +31,9 @@ class ImportReview(unittest.TestCase):
         self.base='/api/studies/atlas/imports/'+self.report['id']
 
     def tearDown(self):
-        self.admin.config('/api/admin/role', {'identity':'alex','role':'Researcher'})
+        # Restart cases invalidate server-held sessions; cleanup explicitly selects its actor.
+        self.admin.login('admin')
+        self.assertEqual(self.admin.config('/api/admin/role', {'identity':'alex','role':'Researcher'})[0],200)
 
     def write(self):
         return dict(expectedRevision=self.alex.request('/api/studies/atlas')[1]['revision'],requestId=str(uuid.uuid4()))

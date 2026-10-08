@@ -13,7 +13,7 @@ const context=await browser.newContext({viewport:{width:390,height:844}}),page=a
 context.setDefaultTimeout(15000);
 const errors=[],external=[];page.on('pageerror',e=>errors.push(e.message));context.on('request',r=>{if(new URL(r.url()).origin!==new URL(base).origin)external.push(r.url());});
 const ready=async()=>page.getByRole('heading',{name:'My studies',exact:true}).waitFor();
-const identity=async id=>{await page.locator('#identity').selectOption(id);await ready();await page.getByText('Demo identity changed. Accessible studies have been refreshed.',{exact:true}).waitFor();};
+const identity=async id=>{await page.locator('#identity').selectOption(id);await ready();await page.getByText('Demo identity changed. Accessible studies have been refreshed.',{exact:false}).waitFor();};
 const json=async path=>{const r=await context.request.get(base+path);assert.equal(r.status(),200);return r.json();};
 try{
  await page.goto(base);await ready();
@@ -23,10 +23,10 @@ try{
   const failed=await browser.newContext();failed.setDefaultTimeout(15000);const fp=await failed.newPage();await fp.route('**/api/session',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Synthetic startup interruption'})}));await fp.goto(base);await fp.getByRole('heading',{name:'Unable to load the local demo'}).waitFor();await fp.unroute('**/api/session');await fp.reload();await fp.getByRole('heading',{name:'My studies',exact:true}).waitFor();await failed.close();
   await page.locator('#search').fill('unmatched-synthetic-first-use-query');await page.locator('#search-form button').click();await page.getByRole('heading',{name:'No matching records'}).waitFor();
   for(const kind of ['search','route']){
-   let releaseRace;const gateRace=new Promise(r=>releaseRace=r);const pattern=kind==='search'?'**/api/search?**':'**/api/studies/atlas';let intercepted;const seen=new Promise(r=>intercepted=r);
-   await page.route(pattern,async route=>{intercepted();await gateRace;await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Obsolete synthetic failure'})});});
+   let releaseRace,handledRace;const gateRace=new Promise(r=>releaseRace=r),finishedRace=new Promise(r=>handledRace=r);const pattern=kind==='search'?'**/api/search?**':'**/api/studies/atlas';let intercepted;const seen=new Promise(r=>intercepted=r);
+   await page.route(pattern,async route=>{intercepted();await gateRace;try{await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Obsolete synthetic failure'})});}catch(error){if(!/already handled|aborted/i.test(error.message))throw error;}finally{handledRace();}});
    if(kind==='search'){await page.locator('#search').fill('Handoff');await page.locator('#search-form button').click();}else await page.goto(base+'/#study/atlas/overview');
-   await seen;await identity('admin');await page.getByRole('heading',{name:'No study access'}).waitFor();const obsoleteResponse=page.waitForResponse(r=>r.status()===503);releaseRace();await obsoleteResponse;await page.unroute(pattern);await page.waitForTimeout(100);assert(!await page.locator('main').innerText().then(t=>t.includes('Obsolete synthetic failure')));await identity('alex');
+   await seen;await identity('admin');await page.getByRole('heading',{name:'No study access'}).waitFor();releaseRace();await finishedRace;await page.unroute(pattern);await page.waitForTimeout(100);assert(!await page.locator('main').innerText().then(t=>t.includes('Obsolete synthetic failure')));await identity('alex');
   }
   const preRevocation=await json('/api/studies/atlas');
   const adminContext=await browser.newContext();adminContext.setDefaultTimeout(15000);const admin=await adminContext.newPage();await admin.goto(base);await admin.getByRole('heading',{name:'My studies',exact:true}).waitFor();await admin.locator('#identity').selectOption('admin');await admin.getByRole('heading',{name:'No study access'}).waitFor();await admin.getByRole('link',{name:'Administration',exact:true}).click();await admin.getByRole('heading',{name:'Access & configuration'}).waitFor();

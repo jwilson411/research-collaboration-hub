@@ -23,8 +23,10 @@ BASE = "http://127.0.0.1:5080"
 
 class Client:
     def __init__(self):
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        self.cookies = http.cookiejar.CookieJar()
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookies))
         self.csrf = None
+        self.session_context = None
 
     def request(self, path, payload=None, method=None, csrf=True, headers=None):
         head = dict(headers or {})
@@ -32,6 +34,8 @@ class Client:
             head["Content-Type"] = "application/json"
         if csrf and self.csrf:
             head["X-CSRF-TOKEN"] = self.csrf
+        if self.session_context and "X-HUB-SESSION" not in head:
+            head["X-HUB-SESSION"] = self.session_context
         req = urllib.request.Request(BASE + path, data=json.dumps(payload).encode() if payload is not None else None,
                                      headers=head, method=method)
         try:
@@ -43,6 +47,8 @@ class Client:
             data = json.loads(data)
         except (ValueError, UnicodeDecodeError):
             pass
+        if path == "/api/session" and payload is None and response.status == 200:
+            self.session_context = data["sessionContext"]
         return response.status, data, response.headers
 
     def config(self, path, payload, **options):

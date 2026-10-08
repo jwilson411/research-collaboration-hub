@@ -29,7 +29,7 @@ class ResourceTests(unittest.TestCase):
         change.pop('templateId');change['body']='Next immutable content'
         status,study,_=self.client.request('/api/studies/atlas/documents/'+item['id']+'/versions',change)
         self.assertEqual(status,200);self.assertEqual(study['items'][-1]['template'],item['template'])
-        type(self).stop();type(self).start()
+        type(self).stop();type(self).start();self.client.login("alex")
         self.assertEqual(next(i for i in self.study()['items'] if i['id']==item['id']),item)
     def test_resource_validation_authorization_and_retry(self):
         path='/api/studies/atlas/resources'
