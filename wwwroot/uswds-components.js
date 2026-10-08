@@ -7,7 +7,7 @@
   const describe = (input, id) => input.setAttribute('aria-describedby', [...new Set((input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean).concat(id))].join(' '));
   function headingLevel(node) {
     for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
-      const heading = Array.from(ancestor.children).find(child => /^H[1-6]$/.test(child.tagName));
+      const heading = Array.from(ancestor.children).map(child => /^H[1-6]$/.test(child.tagName) ? child : child.matches('.family-heading,.row-head,.content-heading,.page-heading') ? child.querySelector('h1,h2,h3,h4,h5,h6') : null).find(Boolean);
       if (heading) return Math.min(6, Number(heading.tagName.slice(1)) + 1);
       if (ancestor.classList.contains('usa-accordion')) {
         const buttonHeading = ancestor.querySelector(':scope > .usa-accordion__heading');
