@@ -2,7 +2,11 @@
 
 ## Next useful local milestone
 
-Give text documents stable family IDs independent of their titles, explicit draft/accepted workspace states, and a fixed handoff snapshot that records exact item/file versions and unresolved actions. Current text version labels still derive from matching titles in Program.cs; binary families and explicit protocol selection already use stable exact IDs. Add superseded decisions so correcting guidance preserves a clear prior record.
+Extend the accessible brainstorming list into named sessions with explicit purpose, responsible participant, item editing/history and keyboard ordering. Preserve idea-to-decision links in both directions, and provide a readable, access-checked session summary. Use list controls before adding drag-only or spatial interaction.
+
+Pair this with a concise returning-collaborator checklist: current working guidance, latest handoff, unresolved questions, responsible study contact and next action. Existing living documentation and seeded handoff cover the foundation; a personal completion state and clear resume point are still absent. Keep onboarding independent from editable directory membership.
+
+Acceptance criteria: complete the session entirely by keyboard at mobile width; concurrent edits preserve drafts; repeated/restarted saves do not duplicate ideas; summary and direct URLs enforce study access and removal; decisions retain the exact source idea revision. No canvas, AI or messaging integration is needed for this bounded milestone.
 
 ## Recovery and import follow-up
 

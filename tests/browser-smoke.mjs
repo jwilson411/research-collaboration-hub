@@ -17,7 +17,7 @@ const errors=[],external=[];
 context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
 page.on('pageerror',e=>errors.push(e.message));
 context.on('request',r=>{if(new URL(r.url()).origin!==url.origin)external.push(r.url());});
-const saved=async p=>{await p.locator('#task-form, #upload-form, #item-form').waitFor({state:'detached'});await p.getByText('Saved. The shared record has been updated.',{exact:true}).waitFor();};
+const saved=async p=>{await p.locator('#task-form, #upload-form, #item-form, #document-form, #document-state-form').waitFor({state:'detached'});await p.getByText('Saved. The shared record has been updated.',{exact:true}).waitFor();};
 const reflow=async p=>assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth),await p.evaluate(()=>innerWidth),'Page must not overflow viewport');
 try {
  await page.goto(base); await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();
@@ -149,6 +149,78 @@ try {
  await page.locator('#identity').selectOption('alex');await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();await page.getByRole('link',{name:'Open workspace'}).click();await page.getByRole('heading',{name:'At a glance',exact:true}).waitFor();await page.getByRole('link',{name:'Discussions',exact:true}).click();
 
  await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:`${output}/imported-discussion-desktop.png`,fullPage:true});
+ // Stable text families and study-specific review roles are independent of application administration.
+ const switchStudyIdentity=async identity=>{await page.locator('#identity').selectOption(identity);await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();await page.getByRole('link',{name:'Open workspace'}).click();await page.getByRole('heading',{name:'At a glance',exact:true}).waitFor();await page.getByRole('link',{name:'Document library',exact:true}).click();};
+ const documentRecord=title=>page.locator('article.record').filter({has:page.getByRole('heading',{name:title,exact:true})});
+ const reviewState=async(title,action,status,reason)=>{await documentRecord(title).getByRole('button',{name:action,exact:true}).click();await page.getByLabel('Reason for review-state change',{exact:true}).fill(reason);await page.getByRole('button',{name:'Confirm '+status,exact:true}).click();await saved(page);};
+ await page.getByRole('link',{name:'Document library',exact:true}).click();
+ await page.getByRole('button',{name:'Add document',exact:true}).click();
+ await page.getByLabel('Document title',{exact:true}).fill('Orientation review packet');
+ await page.getByLabel('Version content',{exact:true}).fill('Initial synthetic orientation packet. Preserve this first version.');
+ await page.getByRole('button',{name:'Save draft version',exact:true}).click();await saved(page);
+ const familyBefore=await documentRecord('Orientation review packet').locator('.task-facts').innerText();
+ await documentRecord('Orientation review packet').getByRole('button',{name:'Add revision',exact:true}).click();
+ await page.getByLabel('Document title',{exact:true}).fill('Revised orientation packet');
+ await page.getByLabel('Version content',{exact:true}).fill('Revised synthetic orientation packet with clear handoff responsibilities.');
+ await page.getByRole('button',{name:'Save draft version',exact:true}).click();await saved(page);
+ const familyAfter=await documentRecord('Revised orientation packet').locator('.task-facts').innerText();assert.equal(familyBefore,familyAfter);
+ assert.match(await documentRecord('Revised orientation packet').innerText(),/Version 2/);
+ assert.match(await documentRecord('Orientation review packet').innerText(),/Initial synthetic orientation packet/);
+ await reviewState('Revised orientation packet','Submit for review','Review','Ready for a second participant to review.');
+ assert.equal(await documentRecord('Revised orientation packet').getByRole('button',{name:'Accept version',exact:true}).count(),0);
+ assert.equal(await documentRecord('Revised orientation packet').getByRole('button',{name:'Return to draft',exact:true}).count(),0);
+ await switchStudyIdentity('reviewer');
+ assert.equal(await documentRecord('Revised orientation packet').getByRole('button',{name:'Accept version',exact:true}).count(),0);
+ await reviewState('Revised orientation packet','Return to draft','Draft','Clarify who owns the remaining handoff question.');
+ await switchStudyIdentity('alex');
+ await reviewState('Revised orientation packet','Submit for review','Review','Ownership is clarified for the next review.');
+ await switchStudyIdentity('lead');
+ await reviewState('Revised orientation packet','Accept version','Accepted','Accept this internal working packet.');
+ assert.match(await documentRecord('Revised orientation packet').locator('.task-facts').innerText(),/Accepted/i);
+ await reviewState('Revised orientation packet','Supersede version','Superseded','Retain this version as the historical reference.');
+ assert.match(await documentRecord('Revised orientation packet').locator('.task-facts').innerText(),/Superseded/i);
+ await page.setViewportSize({width:390,height:844});await reflow(page);
+ await page.screenshot({path:`${output}/document-review-mobile.png`,fullPage:true});
+ // Capture once, then change live task/state. The returned captured packet stays byte-for-byte equivalent.
+ await page.getByRole('link',{name:'Handoff snapshots',exact:true}).click();
+ const seededSnapshot=page.locator('#handoff-list article').filter({has:page.getByRole('heading',{name:'Orientation handoff • synthetic example',exact:true})});
+ await seededSnapshot.getByRole('button',{name:'View snapshot',exact:true}).click();
+ await page.locator('#handoff-detail').getByRole('heading',{name:'Orientation handoff • synthetic example',exact:true}).waitFor();
+ assert.match(await page.locator('#handoff-detail').innerText(),/Captured state: Accepted/i);
+ const seedReviewHistory=page.locator('#handoff-detail summary').filter({hasText:'Captured review history'}).first();
+ await seedReviewHistory.focus();await page.keyboard.press('Enter');
+ assert.match(await page.locator('#handoff-detail').innerText(),/Draft → Review/);
+ await page.keyboard.press('Enter');
+
+ await page.getByLabel('Snapshot title',{exact:true}).fill('Reviewed orientation handoff');
+ await page.getByLabel('Scope, assumptions, open questions, and owners',{exact:true}).fill('Synthetic scope: compare documentation approaches. Owner Alex; confirm the final checklist before resuming work.');
+ const rejectedCapture=page.waitForResponse(r=>r.url().endsWith('/handoffs')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:'Capture snapshot',exact:true}).click();assert.equal((await rejectedCapture).status(),400);
+ await page.getByText('Your input is retained.',{exact:false}).waitFor();
+ assert.equal(await page.getByLabel('Snapshot title',{exact:true}).inputValue(),'Reviewed orientation handoff');
+ await page.getByLabel('Evidence selection',{exact:true}).selectOption('explicit');
+ await page.getByText('Choose explicit evidence (optional)',{exact:true}).click();
+ await page.getByLabel('Revised orientation packet · document version 2',{exact:true}).check();
+ await page.locator('#handoff-form label').filter({hasText:'Review the handoff checklist · task version'}).locator('input').check();
+ const captureResponse=page.waitForResponse(r=>r.url().endsWith('/handoffs')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:'Capture snapshot',exact:true}).click();const captureResult=await captureResponse;assert.equal(captureResult.status(),200);const captured=await captureResult.json();
+ await page.getByText('Immutable handoff snapshot captured.',{exact:true}).waitFor();
+ assert.equal(await page.locator(':focus').getAttribute('class'),'panel handoff-capture');
+ await page.locator('#handoff-detail').getByRole('heading',{name:'Reviewed orientation handoff',exact:true}).waitFor();
+ const capturedText=await page.locator('#handoff-detail').innerText();
+ await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();
+ await task.getByRole('button',{name:'Update task',exact:true}).click();
+ await page.getByLabel('Next action and context',{exact:true}).fill('Live task changed after the fixed handoff capture.');
+ await page.getByRole('button',{name:'Save task',exact:true}).click();await saved(page);
+ await page.getByRole('link',{name:'Activity & lifecycle',exact:true}).click();
+ for(const stage of ['Closed','Active']){const oldStageForm=await page.locator('#stage-form').elementHandle();await page.getByLabel('Workspace stage',{exact:true}).selectOption(stage);const response=page.waitForResponse(r=>r.url().endsWith('/stage')&&r.request().method()==='POST');await page.getByRole('button',{name:'Update stage',exact:true}).click();assert.equal((await response).status(),200);await page.waitForFunction(form=>!form.isConnected,oldStageForm);await page.getByText('Saved. The shared record has been updated.',{exact:true}).waitFor();await page.locator('main[aria-busy="true"]').waitFor({state:'detached'});}
+ await page.getByRole('link',{name:'Handoff snapshots',exact:true}).click();
+ const snapshotCard=page.locator('#handoff-list article').filter({has:page.getByRole('heading',{name:'Reviewed orientation handoff',exact:true})});
+ const snapshotResponse=page.waitForResponse(r=>r.url().endsWith('/handoffs/'+captured.id)&&r.request().method()==='GET');
+ await snapshotCard.getByRole('button',{name:'View snapshot',exact:true}).click();const viewed=await(await snapshotResponse).json();assert.deepEqual(viewed,captured);
+ await page.locator('#handoff-detail').getByRole('heading',{name:'Reviewed orientation handoff',exact:true}).waitFor();assert.equal(await page.locator('#handoff-detail').innerText(),capturedText);
+ assert.equal(await page.locator('#handoff-detail').getByText('Live task changed after the fixed handoff capture.',{exact:true}).count(),0);
+ await reflow(page);await page.screenshot({path:`${output}/handoff-mobile.png`,fullPage:true});
  assert.deepEqual(errors,[]); assert.deepEqual(external,[]);
- console.log('PASS: keyboard skip link, structured task create/edit/history/evidence, conflict draft recovery, identity isolation, mobile reflow, upload/download bytes and versions, quarantine, oversize error, explicit protocol retention, exact file citations, stale admin rejection, connected import preview/apply/repeat, no page errors or external requests.');
+ console.log('PASS: keyboard skip link, structured task create/edit/history/evidence, conflict draft recovery, identity isolation, mobile reflow, upload/download bytes and versions, quarantine, oversize error, explicit protocol retention, exact file citations, stale admin rejection, connected import preview/apply/repeat, stable document families and review roles, immutable handoff after edits and lifecycle changes, no page errors or external requests.');
 } finally {await browser.close();}

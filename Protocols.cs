@@ -6,13 +6,26 @@ public record ProtocolDesignation(string? Kind,string? Id,string Reason,string A
 public record ProtocolInput(string? Kind,string? Id,string Reason,int ExpectedRevision,string RequestId);
 public static class EvidenceRules
 {
+    public static bool HasAncestor(Study study,string? childId,string ancestorId)
+    {
+        var seen=new HashSet<string>();
+        while(childId is not null&&seen.Add(childId)) {if(childId==ancestorId)return true;childId=study.Items.FirstOrDefault(i=>i.Id==childId)?.ParentId;}
+        return false;
+    }
+    public static bool ItemAvailable(Study study,string id)
+    {
+        var seen=new HashSet<string>();string? current=id;
+        while(current is not null) {if(!seen.Add(current))return false;var item=study.Items.FirstOrDefault(i=>i.Id==current&&!i.Deleted);if(item is null)return false;current=item.ParentId;}
+        return true;
+    }
+    public static bool ProtectedByAcceptedDocument(Study study,string fileId) => study.Items.Any(item=>!item.Deleted&&item.Kind=="document"&&item.FileIds.Contains(fileId)&&DocumentRules.Status(study,item) is "Accepted" or "Superseded");
     public static bool FileAvailable(Study study,string id,AttachmentStorage storage)
     {
         if(!FileAvailable(study,id))return false;
         var file=study.Files.Single(f=>f.Id==id);
         return storage.CanReference(file);
     }
-    public static bool FileAvailable(Study study,string id) => study.Files.Any(file=>file.Id==id&&!file.Deleted&&file.Status=="DemoReleased"&&(file.ParentId is null||study.Items.Any(item=>item.Id==file.ParentId&&!item.Deleted)));
+    public static bool FileAvailable(Study study,string id) => study.Files.Any(file=>file.Id==id&&!file.Deleted&&file.Status=="DemoReleased"&&(file.ParentId is null||ItemAvailable(study,file.ParentId)));
 }
 public static class ProtocolEndpoints
 {

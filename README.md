@@ -14,9 +14,11 @@ Windows PowerShell: `./scripts/Start-LocalPreview.ps1`.
 
 Open http://127.0.0.1:5080 **on the development computer**. A phone's localhost does not reach that computer. The launcher explicitly enables Development and the synthetic file-release policy. Set `HUB_DEMO_FILE_RELEASE=false` to quarantine every upload. Stop with Ctrl+C. There are no LAN listeners, tunnels, hosted CI, AI requests or messaging integrations.
 
-The application requires explicit demo enablement and Development, validates loopback remote address and Host, and refuses Production startup. Any local visitor can select a synthetic identity: this is a demonstration mechanism, not production authentication. Alex has Atlas access, Sam has Beacon access, and Morgan manages application roles/mappings without automatic study access. Synthetic group membership is immutable and does not become an editable roster.
+The application requires explicit demo enablement and Development, validates loopback remote address and Host, and refuses Production startup. Any local visitor can select a synthetic identity: this is a demonstration mechanism, not production authentication. Alex, Casey (reviewer) and Riley (study lead) have Atlas access; Sam has Beacon access; Morgan manages application roles/mappings without automatic study access. Synthetic group membership is immutable and does not become an editable roster.
 
 ## Five-minute walkthrough
+
+Fresh state includes an entirely synthetic checklist-review and handoff journey. See [document review and handoff walkthrough](docs/DOCUMENTS-HANDOFFS.md) for the complete author → reviewer → study lead → returning collaborator sequence. Existing saved workspaces are preserved; select a separate empty `HUB_DATA` path for fresh fixtures.
 
 1. As Alex, open Atlas. Review its documentation and discussion. Select an exact text or released file version as the current study protocol, with a reason. This is a workspace designation, not an external approval. Uploading a newer version does not change it.
 2. Open Tasks & decisions. Create a task with Alex as assignee, a due date, status and exact document/discussion/file-version evidence. Edit it and inspect the retained earlier revision.

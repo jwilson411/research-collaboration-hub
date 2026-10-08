@@ -225,6 +225,7 @@ public static class AttachmentEndpoints
                 if (index < 0) return Results.NotFound();
                 if (study.CurrentProtocol?.Kind == "file" && study.CurrentProtocol.Id == fileId)
                     return Results.Conflict(new { error = "Reassign or clear the current protocol before removing this file." });
+                if(EvidenceRules.ProtectedByAcceptedDocument(study,fileId))return Results.Conflict(new {error="An accepted or superseded document retains this exact file as evidence."});
                 study.Files[index] = study.Files[index] with { Deleted = true };
                 study.Revision++;
                 study.Requests.Add(input.RequestId, fingerprint);
@@ -234,7 +235,7 @@ public static class AttachmentEndpoints
             })));
     }
     static bool Visible(Study study, StoredFile file) => !file.Deleted &&
-        (file.ParentId is null || study.Items.Any(i => i.Id == file.ParentId && !i.Deleted));
+        (file.ParentId is null || EvidenceRules.ItemAvailable(study, file.ParentId));
     static string Fingerprint<T>(string operation, T input) => Convert.ToHexString(
         SHA256.HashData(Encoding.UTF8.GetBytes(operation + ":" + JsonSerializer.Serialize(input))));
     static IResult WithStorageErrors(Func<IResult> operation)

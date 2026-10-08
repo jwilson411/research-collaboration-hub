@@ -30,7 +30,7 @@ class Tasks(unittest.TestCase):
         return state, state["items"][-1]
 
     def test_task_assignees_access_csrf(self):
-        self.assertEqual([x["id"] for x in self.alex.request("/api/studies/atlas/assignees")[1]], ["alex"])
+        self.assertEqual({x["id"] for x in self.alex.request("/api/studies/atlas/assignees")[1]}, {"alex", "reviewer", "lead"})
         for client in (self.sam, self.admin):
             self.assertEqual(client.request("/api/studies/atlas/assignees")[0], 404)
             self.assertEqual(client.request("/api/studies/atlas/tasks", self.payload())[0], 404)

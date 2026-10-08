@@ -129,6 +129,7 @@ public static class SyntheticImportEndpoints
             }
             if (old is not null)
             {
+                if (c.Deleted && c.Revision > old.SourceRevision && c.Kind is "version" or "attachment" && EvidenceRules.ProtectedByAcceptedDocument(study, old.TargetId)) c.Reasons.Add("accepted_document_evidence_cannot_be_removed");
                 if (c.Revision > old.SourceRevision && study.CurrentProtocol?.Id == old.TargetId) c.Reasons.Add("current_protocol_must_be_cleared_before_source_change");
                 if (old.SourceStudyId != c.SourceStudyId || old.Kind != c.Kind) c.Reasons.Add("immutable_source_identity_changed");
                 if (TargetFingerprint(study, old.TargetId, old.Kind) != old.TargetFingerprint) c.Reasons.Add("changed_on_target");

@@ -5,11 +5,12 @@ Local implementation is distinct from production readiness. Demo policy choices 
 | Capability | Implemented local behavior | Remaining gate |
 |---|---|---|
 | Studies and overview | Synthetic group filters; exact current-protocol designation/history, questions and next actions | Real identity and approved designation policy |
-| Text documentation | Append-only text records; exact item/file-version evidence references | Stable families and governed acceptance |
+| Text documentation | Stable text families, immutable versions, role-gated review states/history; exact evidence references | Production role adapter and approved review policy |
 | Binary files | Immutable versions, scoped attachments, generated storage paths, hashes, validated types/names/size, authorized forced downloads | Approved malware scanner, quotas, retention and restore exercises |
 | Quarantine | Default closed; explicitly enabled text/exact synthetic PNG demonstration | Production scan/release lifecycle |
 | Discussions | Nested replies and file attachments; parent deletion hides attachments | Moderation and records policy |
 | Tasks | Assignee, date, status, exact item/file-version links, revision history, conflict/retry protection | Approved role semantics and directory revocation |
+| Handoffs | Immutable bounded captures of exact evidence, current tasks, decisions and questions; current-access/removal projection | Recovery, reviewed export/retention policy |
 | Decisions and ideas | Attributable records; linked idea-to-decision workflow | Supersession, richer accessible board exports |
 | Lifecycle | Active/Paused/Closed with reopening and retained history | Approved lifecycle role matrix |
 | Search/download | Server-side membership checks; deleted content unavailable | Production index and revocation tests |

@@ -1,15 +1,19 @@
 # Local validation record
 
-Third preview milestone, Linux build environment:
+Fourth preview milestone, Linux build environment:
 
 - Application build: zero warnings and errors.
-- `python3 -m unittest discover -s tests -v`: **57 tests passed**, 56.470 seconds (10 core HTTP, 12 file, 3 configuration, 9 offline import, 12 connected ingestion, 5 protocol and 6 task cases).
+- `python3 -m unittest discover -s tests -v`: **81 tests passed**, 88.935 seconds (10 core HTTP, 12 file, 3 configuration, 3 document workflow, 9 handoff, 9 offline import, 12 connected ingestion, 12 independent security, 5 protocol and 6 task cases).
 - SQL adapter protocol harness: **19 checks passed** using a simulated ADO.NET connection, not a real database.
 - Explicit SQL initializer: refuses missing connection configuration before attempting a connection.
 - `node --check` passed for frontend and browser smoke script.
 - Independent browser smoke used the actual local launcher, disposable synthetic state and headless Chromium. Verified task assignee/date/status/evidence/history, concurrent-edit draft preservation, exact file download bytes, versions, quarantine, oversized input feedback, admin isolation, keyboard skip navigation and 390-pixel reflow. No JavaScript errors or external requests were observed.
-- Third-milestone browser checks additionally verified explicit protocol v1 remaining selected after v2 upload, exact task/decision file citations, stale administrator edits, and administrator roles granting no extra study membership. Connected import produced 7 imported records, then 7 unchanged on repeat; historical versions, original author/date, nested reply, attachment bytes and study isolation passed.
+- Prior and current browser checks additionally verified explicit protocol v1 remaining selected after v2 upload, exact task/decision file citations, stale administrator edits, and administrator roles granting no extra study membership. Connected import produced 7 imported records, then 7 unchanged on repeat; historical versions, original author/date, nested reply, attachment bytes and study isolation passed.
 - Independent adversarial review produced regression coverage for quarantined binary content, malformed manifests, interrupted immutable blob retries, unavailable evidence and protection of imported parents with live native or imported children. Server-side search excludes inaccessible or deleted attachment records.
+
+- Fourth-milestone browser regression ran from fresh synthetic state through the actual launcher: renamed immutable document family; Researcher/Reviewer/StudyLead transitions; keyboard inspection of seeded capture history; quarantine rejection with preserved inputs followed by explicit-selection retry; unchanged snapshot JSON and visible content after task edits and Closed → Active lifecycle changes. Mobile width 390 had no horizontal overflow; no JavaScript errors or external requests were observed.
+- Legacy imported-item serialization omits absent document-version metadata, preserving prior target fingerprints; omission and subsequent source-delta reconciliation are covered by the ingestion suite.
+- Independent milestone-four security checks covered privileged request replay, accepted document/file and ancestor retention, review-history removal, snapshot body/name/hash masking, access revocation, missing/tampered evidence, release-policy changes and restart. Independent static review findings were addressed before the final combined run.
 
 These results establish the local synthetic preview only. Browser screenshots are private delivery artifacts, not committed source. Automated accessibility checks from the earlier preview covered board/admin landmarks; the new browser smoke is not a full accessibility audit. No screen-reader, live SQL Server, Windows/IIS, real directory, malware scanner, crash-recovery, scale or production compliance result is claimed.
 

@@ -22,8 +22,9 @@ builder.Services.ConfigureHttpJsonOptions(options => {
  if(info.Type==typeof(SourceProvenance)) {var original=info.Properties.FirstOrDefault(p=>p.Name=="original");if(original is not null)original.ShouldSerialize=(_,_)=>false;}
  if(info.Type==typeof(State)) {var requests=info.Properties.FirstOrDefault(p=>p.Name=="configRequests");if(requests is not null)requests.ShouldSerialize=(_,_)=>false;}
  if(info.Type==typeof(Study)) {
-  foreach(var name in new[]{"requests","importLedger","importReports"}) {var hidden=info.Properties.FirstOrDefault(p=>p.Name==name);if(hidden is not null)hidden.ShouldSerialize=(_,_)=>false;}
-  var files=info.Properties.FirstOrDefault(p=>p.Name=="files"); if(files is not null)files.Get=obj=>{ var study=(Study)obj; return study.Files.Where(file=>!file.Deleted&&(file.ParentId is null||study.Items.Any(item=>item.Id==file.ParentId&&!item.Deleted))).ToList(); };
+  foreach(var name in new[]{"requests","importLedger","importReports","handoffs"}) {var hidden=info.Properties.FirstOrDefault(p=>p.Name==name);if(hidden is not null)hidden.ShouldSerialize=(_,_)=>false;}
+  var reviews=info.Properties.FirstOrDefault(p=>p.Name=="documentReviews"); if(reviews is not null)reviews.Get=obj=>{var study=(Study)obj;return study.DocumentReviews.Where(pair=>study.Items.Any(item=>item.Id==pair.Key&&!item.Deleted&&item.Kind=="document")).ToDictionary(pair=>pair.Key,pair=>pair.Value);};
+  var files=info.Properties.FirstOrDefault(p=>p.Name=="files"); if(files is not null)files.Get=obj=>{ var study=(Study)obj; return study.Files.Where(file=>!file.Deleted&&(file.ParentId is null||EvidenceRules.ItemAvailable(study,file.ParentId))).ToList(); };
  } });
  options.SerializerOptions.TypeInfoResolver=resolver;
 });
@@ -63,7 +64,7 @@ app.MapGet("/api/search",(string? q,HttpContext c,IStudyStore store)=>store.Read
  var hits=new List<object>();
  foreach(var study in s.Studies.Where(study=>Access(s,Identity(c),study))) {
   hits.AddRange(study.Items.Where(item=>!item.Deleted&&(item.Title+" "+item.Body).Contains(query,StringComparison.OrdinalIgnoreCase)).Select(item=>(object)new {studyId=study.Id,studyTitle=study.Title,item}));
-  hits.AddRange(study.Files.Where(file=>!file.Deleted&&(file.ParentId is null||study.Items.Any(item=>item.Id==file.ParentId&&!item.Deleted))&&file.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).Select(file=>(object)new {studyId=study.Id,studyTitle=study.Title,item=new {id=file.Id,kind="file",title=file.Name,body="File version "+file.Version+" · "+file.Status}}));
+  hits.AddRange(study.Files.Where(file=>!file.Deleted&&(file.ParentId is null||EvidenceRules.ItemAvailable(study,file.ParentId))&&file.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).Select(file=>(object)new {studyId=study.Id,studyTitle=study.Title,item=new {id=file.Id,kind="file",title=file.Name,body="File version "+file.Version+" · "+file.Status}}));
  }
  return Results.Ok(hits.Take(100));
 }));
@@ -79,7 +80,7 @@ app.MapPost("/api/studies/{id}/items",(string id,ItemInput input,HttpContext c,I
  if(input.DocumentId is not null && !study.Items.Any(i=>i.Id==input.DocumentId&&!i.Deleted&&i.Kind=="document"))return Results.BadRequest(new {error="Evidence must be a live document version in this study."});
  var fileIds=input.FileIds??[];
  if(fileIds.Length>30||fileIds.Distinct().Count()!=fileIds.Length||fileIds.Any(fileId=>!EvidenceRules.FileAvailable(study,fileId,storage)))return Results.BadRequest(new {error="File evidence must reference distinct released versions in this study."});
- var item=new Item(Guid.NewGuid().ToString(),input.Kind,input.Title.Trim(),input.Body,input.ParentId,input.DocumentId,study.Items.Count(i=>i.Kind==input.Kind&&i.Title==input.Title.Trim())+1,Identity(c),DateTimeOffset.UtcNow){FileIds=fileIds};
+ var item=new Item(Guid.NewGuid().ToString(),input.Kind,input.Title.Trim(),input.Body,input.ParentId,input.DocumentId,input.Kind=="document"?1:study.Items.Count(i=>i.Kind==input.Kind&&i.Title==input.Title.Trim())+1,Identity(c),DateTimeOffset.UtcNow){FileIds=fileIds};
  study.Items.Add(item); study.Requests.Add(input.RequestId,fingerprint); study.Revision++; s.Audit.Add(new(Identity(c),"Created "+input.Kind,study.Id,DateTimeOffset.UtcNow)); return Results.Ok(study);
 }));
 app.MapPost("/api/studies/{id}/stage",(string id,StageInput input,HttpContext c,IStudyStore store)=>store.Change(s=> {
@@ -97,15 +98,20 @@ app.MapGet("/api/studies/{id}/documents/{itemId}/download",(string id,string ite
 app.MapPost("/api/studies/{id}/items/{itemId}/delete",(string id,string itemId,RevisionInput input,HttpContext c,IStudyStore store)=>store.Change(s=> {
  var st=s.Studies.FirstOrDefault(x=>x.Id==id&&Access(s,Identity(c),x));if(st is null)return Results.NotFound();
  if(!Guid.TryParse(input.RequestId,out _))return Results.BadRequest();
+ var document=st.Items.FirstOrDefault(item=>item.Id==itemId&&item.Kind=="document"&&!item.Deleted);
+ if(document is not null&&DocumentRules.DeletionError(st,document,Identity(c)) is {} deletionError)return Results.Conflict(new {error=deletionError});
  var fingerprint=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("delete:"+itemId+":"+JsonSerializer.Serialize(input))));
  if(st.Requests.TryGetValue(input.RequestId,out var prior))return prior==fingerprint?Results.Ok(st):Results.Conflict();
  if(st.Revision!=input.ExpectedRevision||st.Stage!="Active")return Results.Conflict();
  if(st.CurrentProtocol is {Kind:"item"} protocol&&protocol.Id==itemId)return Results.Conflict(new {error="Choose another current protocol or clear its designation before removing this version."});
+ if(st.Files.Any(file=>!file.Deleted&&EvidenceRules.HasAncestor(st,file.ParentId,itemId)&&EvidenceRules.ProtectedByAcceptedDocument(st,file.Id)))return Results.Conflict(new {error="An accepted document retains an attachment on this record as evidence."});
  var importedParent=st.ImportLedger.Values.FirstOrDefault(entry=>entry.TargetId==itemId);
  if(importedParent is not null && (st.Items.Any(child=>!child.Deleted&&child.ParentId==itemId)||st.Files.Any(child=>!child.Deleted&&(child.ParentId==itemId||child.FamilyId==itemId))||st.ImportLedger.Values.Any(entry=>entry.SourceStudyId==importedParent.SourceStudyId && entry.Source.Original.ValueKind==JsonValueKind.Object && entry.Source.Original.TryGetProperty("parent_id",out var parent) && parent.ValueKind==JsonValueKind.String && parent.GetString()==importedParent.SourceId && (st.Items.Any(child=>child.Id==entry.TargetId&&!child.Deleted)||st.Files.Any(child=>child.Id==entry.TargetId&&!child.Deleted)))))return Results.Conflict(new {error="Remove imported child records first so historical structure cannot be silently broken."});
  var index=st.Items.FindIndex(i=>i.Id==itemId&&!i.Deleted);if(index<0)return Results.NotFound();
  st.Items[index]=st.Items[index] with {Deleted=true,Body="[Removed from demo view]",Task=null,FileIds=[],Provenance=null};st.Revision++;st.Requests.Add(input.RequestId,fingerprint);s.Audit.Add(new(Identity(c),"Removed item",st.Id,DateTimeOffset.UtcNow));return Results.Ok(st);
 }));
+app.MapDocumentEndpoints(Identity,Access);
+app.MapHandoffEndpoints(Identity,Access);
 app.MapAdminEndpoints(Identity,Access,Admin);
 app.MapProtocolEndpoints(Identity,Access);
 app.MapSyntheticImportEndpoints(Identity,Access);
@@ -116,9 +122,9 @@ record RevisionInput(int ExpectedRevision,string RequestId);
 record SessionInput(string Identity);
 record ItemInput(string Kind,string Title,string Body,string? ParentId,string? DocumentId,int ExpectedRevision,string RequestId,string[]? FileIds=null);
 record StageInput(string Stage,int ExpectedRevision,string RequestId);
-public record Item(string Id,string Kind,string Title,string Body,string? ParentId,string? DocumentId,int Version,string Author,DateTimeOffset CreatedAt,bool Deleted=false) { public TaskDetails? Task {get;init;} public string[] FileIds {get;init;}=[]; public SourceProvenance? Provenance {get;init;} }
+public record Item(string Id,string Kind,string Title,string Body,string? ParentId,string? DocumentId,int Version,string Author,DateTimeOffset CreatedAt,bool Deleted=false) { [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public DocumentVersionDetails? DocumentVersion {get;init;} public TaskDetails? Task {get;init;} public string[] FileIds {get;init;}=[]; public SourceProvenance? Provenance {get;init;} }
 public record Audit(string Actor,string Action,string Target,DateTimeOffset At);
-public class Study {public string Id{get;set;}="";public string Title{get;set;}="";public string Summary{get;set;}="";public string Stage{get;set;}="Active";public string GroupId{get;set;}="";public int Revision{get;set;}=1;public List<Item> Items{get;set;}=[];public List<StoredFile> Files{get;set;}=[];public ProtocolDesignation? CurrentProtocol {get;set;} public List<ProtocolDesignation> ProtocolHistory {get;set;}=[];public Dictionary<string,ImportEntry> ImportLedger {get;set;}=[];public List<ImportReport> ImportReports {get;set;}=[];public Dictionary<string,string> Requests{get;set;}=[];}
+public class Study {public string Id{get;set;}="";public string Title{get;set;}="";public string Summary{get;set;}="";public string Stage{get;set;}="Active";public string GroupId{get;set;}="";public int Revision{get;set;}=1;public List<Item> Items{get;set;}=[];public List<StoredFile> Files{get;set;}=[];public Dictionary<string,DocumentReviewState> DocumentReviews {get;set;}=[];public List<HandoffSnapshot> Handoffs {get;set;}=[];public ProtocolDesignation? CurrentProtocol {get;set;} public List<ProtocolDesignation> ProtocolHistory {get;set;}=[];public Dictionary<string,ImportEntry> ImportLedger {get;set;}=[];public List<ImportReport> ImportReports {get;set;}=[];public Dictionary<string,string> Requests{get;set;}=[];}
 public class State {public int ConfigRevision {get;set;}=1;public Dictionary<string,string> ConfigRequests {get;set;}=[];public List<ConfigurationChange> ConfigurationHistory {get;set;}=[];public List<Study> Studies{get;set;}=[];public Dictionary<string,string> Roles{get;set;}=new(){{"admin","Administrator"}};public List<Audit> Audit{get;set;}=[];}
 public interface IStudyStore { T Read<T>(Func<State,T> read); IResult Change(Func<State,IResult> change); }
 public sealed class JsonStudyStore:IStudyStore {
@@ -129,8 +135,8 @@ public sealed class JsonStudyStore:IStudyStore {
 }
 public static class Demo {
 
- public static readonly DemoIdentity[] Identities=[new("alex","Alex • synthetic researcher","Researcher"),new("sam","Sam • synthetic researcher","Researcher"),new("admin","Morgan • synthetic administrator","Administrator")];
- public static readonly Dictionary<string,string[]> Groups=new(){{"alex",["demo-group-a"]},{"sam",["demo-group-b"]},{"admin",[]}};
- public static State Seed()=>new(){Studies=[new(){Id="atlas",Title="Atlas • Research methods pilot",Summary="A synthetic workspace exploring reproducible research coordination and clear handoffs.",GroupId="demo-group-a",Items=[new("protocol-1","document","Current protocol","Synthetic protocol v1. Compare two documentation approaches using fictional observations only.",null,null,1,"alex",DateTimeOffset.Parse("2026-09-01T10:00:00Z")),new("orientation-1","documentation","Start here","Review the protocol, introduce your question, and record the next action. Alex is the synthetic study contact.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-01T10:00:00Z")),new("question-1","discussion","How should we structure the handoff?","Propose an outline that keeps assumptions and unresolved questions visible.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-02T10:00:00Z")),new("task-1","task","Review the draft protocol","Owner: Alex (synthetic). Next action: agree the documentation checklist.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-02T10:00:00Z"))]},new(){Id="beacon",Title="Beacon • Historical methods study",Summary="Synthetic historical workspace demonstrating reopening with retained context.",Stage="Paused",GroupId="demo-group-b",Items=[new("beacon-protocol","document","Historical protocol","Synthetic historical record retained for continuation.",null,null,1,"departed-synthetic-author",DateTimeOffset.Parse("2020-01-01T10:00:00Z"))]}]};
+ public static readonly DemoIdentity[] Identities=[new("alex","Alex • synthetic researcher","Researcher"),new("sam","Sam • synthetic researcher","Researcher"),new("admin","Morgan • synthetic administrator","Administrator"),new("reviewer","Casey • synthetic reviewer","Researcher"),new("lead","Riley • synthetic study lead","Researcher")];
+ public static readonly Dictionary<string,string[]> Groups=new(){{"alex",["demo-group-a"]},{"sam",["demo-group-b"]},{"admin",[]},{"reviewer",["demo-group-a"]},{"lead",["demo-group-a"]}};
+ public static State Seed()=>SeedJourney.Apply(new(){Studies=[new(){Id="atlas",Title="Atlas • Research methods pilot",Summary="A synthetic workspace exploring reproducible research coordination and clear handoffs.",GroupId="demo-group-a",Items=[new("protocol-1","document","Current protocol","Synthetic protocol v1. Compare two documentation approaches using fictional observations only.",null,null,1,"alex",DateTimeOffset.Parse("2026-09-01T10:00:00Z")),new("orientation-1","documentation","Start here","Review the protocol, introduce your question, and record the next action. Alex is the synthetic study contact.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-01T10:00:00Z")),new("question-1","discussion","How should we structure the handoff?","Propose an outline that keeps assumptions and unresolved questions visible.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-02T10:00:00Z")),new("task-1","task","Review the draft protocol","Owner: Alex (synthetic). Next action: agree the documentation checklist.",null,"protocol-1",1,"alex",DateTimeOffset.Parse("2026-09-02T10:00:00Z"))]},new(){Id="beacon",Title="Beacon • Historical methods study",Summary="Synthetic historical workspace demonstrating reopening with retained context.",Stage="Paused",GroupId="demo-group-b",Items=[new("beacon-protocol","document","Historical protocol","Synthetic historical record retained for continuation.",null,null,1,"departed-synthetic-author",DateTimeOffset.Parse("2020-01-01T10:00:00Z"))]}]});
 }
 public record DemoIdentity(string Id,string Name,string Role);
