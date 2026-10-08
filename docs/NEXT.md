@@ -2,15 +2,13 @@
 
 ## Next useful local milestone
 
-Add explicit decision supersession: preserve rationale, alternatives, responsible participant, effective date and exact evidence while showing which decision replaced an earlier one. Current generic decision records have attribution and exact evidence, but no governed replacement chain. Keep this a collaboration record, not formal study approval.
+Add reviewed quarantine case ownership and disposition with exportable reconciliation receipts. Preserve source provenance and exact-byte verification, make interrupted/repeated applies resumable, and distinguish source changes from protected target-side edits. The connected synthetic importer remains a demonstration rather than an approved production migration process.
 
-Acceptance criteria: a replacement retains the exact earlier decision and source idea/document/file revisions; stale or repeated replacement requests cannot fork or duplicate the chain; superseded decisions remain discoverable with clear status; cross-study and deleted evidence are rejected; handoffs preserve the state at capture; keyboard/mobile flows make the current guidance unambiguous.
-
-After that, prioritize governed document templates and explicit resource pointers with owner/source/last-verified date. The current workspace has reusable seeded guidance but no governed template selection or resource-verification lifecycle. Avoid adding speculative integrations.
+Further polish can add a governed template catalog and resource-pointer replacement/verification history. The current bundled outlines and create-only pointers intentionally make no approval or automatic verification claim.
 
 ## Recovery and import follow-up
 
-- Rehearse metadata-and-blob backup/restore together, interrupted apply and rollback with protected target-side edits. Import currently quarantines changed binary source versions rather than overwrite exact evidence IDs; new source version IDs are required.
+- Extend the stopped synthetic JSON/blob restore rehearsal to approved production storage, crash scenarios and import rollback with protected target-side edits. Import currently quarantines changed binary source versions rather than overwrite exact evidence IDs; new source version IDs are required.
 - Add reviewed quarantine case ownership/disposition and exportable reconciliation receipts. The connected synthetic importer is not a real source extractor or approved production migration process.
 - Replace the synthetic file release policy with an approved scanner/result lifecycle, quotas, reviewed orphan accounting and records-policy disposal. Keep inaccessible orphan bytes isolated until a retention decision exists.
 

@@ -1,6 +1,10 @@
 # Local validation record
 
-Fifth preview milestone, Linux build environment:
+Latest verified result, sixth preview milestone (Linux): **132 tests passed in 143.281 seconds** through `python3 -m unittest discover -s tests -v`. This includes nine decision cases, five template/resource/ancestor cases, ten offline recovery cases and one HTTP restore rehearsal in addition to the previous 107 cases. The initial combined run found one removed-content placeholder compatibility mismatch; the wording was restored and the complete suite reran green.
+
+The build completed with zero warnings/errors; frontend and browser-script syntax checks passed. The independent full Chromium walkthrough passed, with zero axe violations on four exercised screens, no JavaScript errors/external requests, and 390-pixel mobile reflow. The SQL adapter's **19 simulated ADO.NET protocol checks passed**; no live SQL result is claimed. See the sixth-milestone section below for recovery and review evidence.
+
+Prior verified baseline: fifth preview milestone, Linux build environment:
 
 - Application build: zero warnings and errors.
 - `python3 -m unittest discover -s tests -v`: **107 tests passed**, 112.722 seconds (10 core HTTP, 12 file, 11 brainstorming, 3 configuration, 3 document workflow, 9 handoff, 9 offline import, 12 connected ingestion, 22 independent security, 5 onboarding, 5 protocol and 6 task cases).
@@ -19,6 +23,16 @@ Fifth preview milestone, Linux build environment:
 - Axe found **zero violations** on the exercised onboarding and brainstorming-session screens. Mobile screenshots at 390 pixels were visually reviewed. These checks establish neither full screen-reader acceptance nor accessibility compliance.
 - Independent session/onboarding adversarial checks covered role-before-replay, cross-study/session/idea boundaries, complete ordering, deletion/history/export masking, private personal revisions, context changes after imported conversation updates, and restart. Optional board metadata is omitted when absent to preserve existing import fingerprints.
 
-These results establish the local synthetic preview only. Browser screenshots are private delivery artifacts, not committed source. Automated accessibility checks cover only the exercised screens and rules; the browser smoke is not a full accessibility audit. No screen-reader, live SQL Server, Windows/IIS, real directory, malware scanner, crash-recovery, scale or production compliance result is claimed.
+These results establish the local synthetic preview only. Browser screenshots are private delivery artifacts, not committed source. Automated accessibility checks cover only the exercised screens and rules; the browser smoke is not a full accessibility audit. No screen-reader, live SQL Server, Windows/IIS, real directory, malware scanner, power-loss/crash-recovery, scale or production compliance result is claimed. The newer stopped synthetic JSON/blob rehearsal is recorded separately below.
 
 Reproduction commands and prerequisites are in README, docs/STORAGE.md and tests/browser-smoke.mjs. HTTP test suites own loopback port 5080 and refuse an occupied port. Stop the preview before running them.
+
+## Sixth milestone recovery and review evidence
+
+Independent Chromium completed the full regression from fresh state through the actual local launcher, including prior task/file/import/document/handoff/onboarding/board flows and the new decision/template/resource flows. Supersession preserved the original record and earlier handoff JSON; historical deep links opened correctly; templates created editable Drafts; an invalid credential-bearing resource URL was rejected with inputs retained, followed by a valid owner/source/date pointer. Axe reported **zero violations on each of four exercised screens**: onboarding, brainstorming, decision history, and templates/resources. No JavaScript errors or external requests were observed, and 390-pixel mobile reflow passed. Screenshots were visually inspected. Two initial harness failures involved hidden completed-task content/navigation timing; the test helpers were corrected and the complete fresh run then passed.
+
+The stopped synthetic-demo rehearsal creates metadata and an attachment through HTTP, stops the app, creates and verifies an archive, restores into a fresh isolated directory, and starts the restored app. Exact study metadata and two handoffs matched; application handoff digest validation succeeded. One blob plus JSON made two verified archive members. The restored download was 54 bytes with SHA-256 `17b26141c75cb3280629777621fa97c2d6f44a9a7597059237d009a84f167ac2`. Six unauthorized requests returned 404, exact retry did not duplicate work, and an edit on the restored copy left both original files unchanged. This is a real local JSON/blob restore exercise, not live SQL or production recovery.
+
+Independent static review prompted full-ancestor availability checks across study/search/document/download responses and evidence selection, protection of retained decision/document/protocol ancestors, Windows reparse-point rejection in recovery paths, and nullable serialization compatibility for earlier requests/import fingerprints/handoff digests. The offline recovery suite covers ten corruption, path, no-overwrite, archive accounting, interruption and refusal cases.
+
+Usability review and fixes are documented in [DECISIONS-RESOURCES.md](DECISIONS-RESOURCES.md). The remaining long-scroll document-family limitation is explicit. All source is synthetic; runtime state, archives, private screenshots and logs are excluded from publication.

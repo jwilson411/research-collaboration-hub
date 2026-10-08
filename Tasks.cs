@@ -40,7 +40,7 @@ public static class TaskEndpoints
         if(dueDate is not null&&(!DateOnly.TryParseExact(dueDate,"yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out var parsed)||parsed.Year<1900||parsed.Year>2100))
             return Results.BadRequest(new {error="Due date must be YYYY-MM-DD between 1900-01-01 and 2100-12-31."});
         var links=input.Links??[];
-        if(links.Length>30||links.Distinct().Count()!=links.Length||links.Any(link=>string.IsNullOrWhiteSpace(link)||!study.Items.Any(i=>i.Id==link&&!i.Deleted&&new[]{"document","documentation","discussion","reply","decision","idea"}.Contains(i.Kind))))
+        if(links.Length>30||links.Distinct().Count()!=links.Length||links.Any(link=>string.IsNullOrWhiteSpace(link)||!study.Items.Any(i=>i.Id==link&&EvidenceRules.ItemAvailable(study,i.Id)&&new[]{"document","documentation","discussion","reply","decision","idea"}.Contains(i.Kind))))
             return Results.BadRequest(new {error="Evidence must contain up to 30 distinct live records from this study."});
         var fileLinks=input.FileLinks??[];
         if(fileLinks.Length>30||fileLinks.Distinct().Count()!=fileLinks.Length||fileLinks.Any(link=>string.IsNullOrWhiteSpace(link)||!EvidenceRules.FileAvailable(study,link,storage)))

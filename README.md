@@ -53,3 +53,7 @@ python3 -m unittest discover -s tests -v
 The HTTP suites require `dotnet` on PATH (or set `DOTNET` to its executable), and exclusively own loopback port 5080. Stop the preview first. The browser smoke script runs against a disposable, already-running demo with a separately installed Playwright/Chromium; see its opening instructions. No hosted CI is configured.
 
 See [feature matrix](docs/FEATURES.md), [synthetic migration rehearsal](docs/MIGRATION.md) and [next milestones](docs/NEXT.md). This preview is not production-ready or an accessibility compliance certification.
+
+Decision supersession, editable document outlines and resource pointers: [walkthrough and limits](docs/DECISIONS-RESOURCES.md).
+
+Stopped synthetic JSON/blob backup and isolated restore: [recovery procedure](docs/RECOVERY.md).

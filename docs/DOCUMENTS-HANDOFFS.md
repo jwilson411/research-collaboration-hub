@@ -39,4 +39,4 @@ Fresh demo state includes a first checklist outline marked Superseded, its Accep
 6. Update the source task. Reopen the earlier snapshot: it retains the previous task version and context. Close and reopen the study; captures stay intact.
 7. Switch to Sam or Morgan to confirm Atlas remains inaccessible. Administrator status never bypasses study membership.
 
-Windows/IIS, real directory roles, formal approval workflows, immutable audit infrastructure, signatures, live SQL, recovery and records-policy disposition require separate implementation and validation.
+Windows/IIS, real directory roles, formal approval workflows, immutable audit infrastructure, signatures, live SQL, production recovery and records-policy disposition require separate implementation and validation.

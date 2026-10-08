@@ -4,7 +4,7 @@ using System.Text.Json;
 
 public record HandoffContent(string StudyTitle, string StudySummary, string StudyStage, int SourceRevision,
     ProtocolDesignation? CurrentProtocol, List<Item> Items, List<StoredFile> Files,
-    Dictionary<string, DocumentReviewState> DocumentReviews);
+    Dictionary<string, DocumentReviewState> DocumentReviews) { [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public Dictionary<string,DecisionCaptureState>? Decisions {get;init;} }
 public record HandoffSnapshot(string Id, string Title, string Summary, string CreatedBy,
     DateTimeOffset CreatedAt, string RequestId, string Fingerprint, HandoffContent Content, string Sha256);
 public record HandoffInput(string Title, string? Summary, string[]? ItemIds, string[]? FileIds,
@@ -94,6 +94,7 @@ public static class HandoffEndpoints
                 visitedItems.Add(id);
                 if (item.ParentId is not null) items.Add(item.ParentId);
                 if (item.DocumentId is not null) items.Add(item.DocumentId);
+                if (item.Decision is not null) { foreach(var source in item.Decision.ItemIds) items.Add(source); foreach(var source in item.Decision.FileIds) files.Add(source); if(item.Decision.SupersedesId is not null) items.Add(item.Decision.SupersedesId); }
                 if (item.BoardDecision is not null) items.Add(item.BoardDecision.IdeaVersionId);
                 foreach (var reference in item.Task?.Links ?? []) items.Add(reference);
                 foreach (var reference in item.FileIds.Concat(item.Task?.FileLinks ?? [])) files.Add(reference);
@@ -126,7 +127,7 @@ public static class HandoffEndpoints
             study.CurrentProtocol, study.Items.Where(i => items.Contains(i.Id)).OrderBy(i => i.Id)
                 .Select(i => i.Task is null ? i : i with { Task = i.Task with { History = [] } }).ToList(),
             study.Files.Where(f => files.Contains(f.Id)).OrderBy(f => f.Id).ToList(),
-            study.DocumentReviews.Where(pair => items.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value));
+            study.DocumentReviews.Where(pair => items.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value)) { Decisions=study.Items.Where(item=>items.Contains(item.Id)&&item.Kind=="decision").ToDictionary(item=>item.Id,item=>DecisionRules.CaptureState(study,item)) };
         var serialized = JsonSerializer.SerializeToUtf8Bytes(copy, Json);
         if (serialized.Length > MaximumCaptureBytes)
             throw new InvalidDataException("The immutable capture exceeds 1 MiB. Choose fewer records or shorter histories.");
@@ -146,8 +147,9 @@ public static class HandoffEndpoints
             var available = ItemAvailable(study, captured.Id);
             var item = available ? captured : captured with {
                 Title = "Removed study record", Body = "[Unavailable: the source record has been removed from current study access.]",
-                ParentId = null, DocumentId = null, Task = null, FileIds = [], Provenance = null, Deleted = true };
+                ParentId = null, DocumentId = null, Task = null, FileIds = [], Provenance = null, Decision=null, BoardDecision=null, Resource=null, Template=null, Deleted = true };
             return new { item, available, reason = available ? null : "Source record removed or unavailable",
+                decision = available ? snapshot.Content.Decisions?.GetValueOrDefault(captured.Id) : null,
                 review = available ? snapshot.Content.DocumentReviews.GetValueOrDefault(captured.Id) : null };
         }).ToArray();
         var files = snapshot.Content.Files.Select(captured => {

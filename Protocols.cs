@@ -36,7 +36,7 @@ public static class ProtocolEndpoints
             var study=state.Studies.FirstOrDefault(s=>s.Id==id&&access(state,identity(context),s));
             if(study is null)return Results.NotFound();
             var selected=study.CurrentProtocol;
-            var available=selected is not null&&(selected.Kind=="item"?study.Items.Any(i=>i.Id==selected.Id&&!i.Deleted&&i.Kind=="document"):selected.Kind=="file"&&EvidenceRules.FileAvailable(study,selected.Id!,storage));
+            var available=selected is not null&&(selected.Kind=="item"?study.Items.Any(i=>i.Id==selected.Id&&EvidenceRules.ItemAvailable(study,i.Id)&&i.Kind=="document"):selected.Kind=="file"&&EvidenceRules.FileAvailable(study,selected.Id!,storage));
             return Results.Ok(new {current=selected,history=study.ProtocolHistory,available,error=selected is not null&&!available?"The designated version is currently unavailable. Its selection and history are preserved.":null});
         }));
         app.MapPost("/api/studies/{id}/protocol",(string id,ProtocolInput input,HttpContext context,IStudyStore store,AttachmentStorage storage)=>store.Change(state=>
@@ -50,7 +50,7 @@ public static class ProtocolEndpoints
             if(study.Requests.TryGetValue(input.RequestId,out var prior))return prior==fingerprint?Results.Ok(study):Results.Conflict(new {error="Request identifier belongs to a different operation."});
             if(study.Revision!=input.ExpectedRevision)return Results.Conflict(new {error="Study changed. Refresh before changing the protocol selection."});
             if(study.Stage!="Active")return Results.Conflict(new {error="Reopen the study before changing the protocol selection."});
-            if(input.Kind=="item"&&!study.Items.Any(item=>item.Id==input.Id&&!item.Deleted&&item.Kind=="document"))return Results.BadRequest(new {error="Choose a live text document version in this study."});
+            if(input.Kind=="item"&&!study.Items.Any(item=>item.Id==input.Id&&EvidenceRules.ItemAvailable(study,item.Id)&&item.Kind=="document"))return Results.BadRequest(new {error="Choose a live text document version in this study."});
             if(input.Kind=="file"&&(!EvidenceRules.FileAvailable(study,input.Id!,storage)||!study.Files.Any(file=>file.Id==input.Id&&file.ParentId is null)))return Results.BadRequest(new {error="Choose a released library-file version in this study. Discussion attachments cannot be designated."});
             var selection=new ProtocolDesignation(input.Kind,input.Id,input.Reason.Trim(),actor,DateTimeOffset.UtcNow);
             study.CurrentProtocol=input.Kind is null?null:selection;

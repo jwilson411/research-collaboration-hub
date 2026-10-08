@@ -230,25 +230,27 @@ class Ingestion(unittest.TestCase):
         self.assertEqual(delete(family), 409)
 
     def test_text_delta_history_version_and_idempotency_conflict(self):
-        payload, report = self.apply(); decision = self.target(report, 'decision-1')
+        payload, report = self.apply(); discussion = self.target(report, 'thread-1')
         # New optional document metadata must not change legacy imported-item fingerprints.
-        initial = next(i for i in self.study()['items'] if i['id'] == decision)
+        initial = next(i for i in self.study()['items'] if i['id'] == discussion)
         self.assertNotIn('documentVersion', initial)
         self.assertNotIn('boardIdea', initial)
         self.assertNotIn('boardDecision', initial)
+        self.assertNotIn('decision', initial)
         persisted = json.loads(self.data.read_text())
-        persisted_item = next(i for s in persisted['studies'] if s['id'] == 'atlas' for i in s['items'] if i['id'] == decision)
+        persisted_item = next(i for s in persisted['studies'] if s['id'] == 'atlas' for i in s['items'] if i['id'] == discussion)
         self.assertNotIn('documentVersion', persisted_item)
         self.assertNotIn('boardIdea', persisted_item)
         self.assertNotIn('boardDecision', persisted_item)
-        batch = copy.deepcopy(self.manifest); batch['records'] = [dict(batch['records'][6], revision=2, body='Synthetic amended rationale')]
+        self.assertNotIn('decision', persisted_item)
+        batch = copy.deepcopy(self.manifest); batch['records'] = [dict(batch['records'][3], revision=2, body='Synthetic amended discussion')]
         _, updated = self.apply(batch); self.assertEqual(updated['counts']['imported'], 1)
-        record = next(i for i in self.study()['items'] if i['id'] == decision)
-        self.assertEqual(record['version'], 2); self.assertEqual(record['body'], 'Synthetic amended rationale')
+        record = next(i for i in self.study()['items'] if i['id'] == discussion)
+        self.assertEqual(record['version'], 2); self.assertEqual(record['body'], 'Synthetic amended discussion')
         stored = json.loads(self.data.read_text())
         ledger = next(s for s in stored['studies'] if s['id'] == 'atlas')['importLedger'][batch['records'][0]['source_id']]
         self.assertEqual(len(ledger['history']), 1)
-        self.assertEqual(ledger['history'][0]['original']['body'], self.manifest['records'][6]['body'])
+        self.assertEqual(ledger['history'][0]['original']['body'], self.manifest['records'][3]['body'])
         payload['manifest'] = batch
         self.assertEqual(self.alex.request('/api/studies/atlas/imports/apply', payload)[0], 409)
         fresh = self.payload(); fresh['expectedRevision'] -= 1

@@ -129,6 +129,8 @@ public static class SyntheticImportEndpoints
             }
             if (old is not null)
             {
+                if (c.Revision > old.SourceRevision && c.Kind == "decision" && study.Items.FirstOrDefault(i => i.Id == old.TargetId) is { } existingDecision &&
+                    DecisionRules.ImportChangeError(study, existingDecision, c.Deleted) is not null) c.Reasons.Add("decision_history_requires_typed_supersession_or_retention");
                 if (c.Deleted && c.Revision > old.SourceRevision && c.Kind is "version" or "attachment" && EvidenceRules.ProtectedByAcceptedDocument(study, old.TargetId)) c.Reasons.Add("accepted_document_evidence_cannot_be_removed");
                 if (c.Revision > old.SourceRevision && study.CurrentProtocol?.Id == old.TargetId) c.Reasons.Add("current_protocol_must_be_cleared_before_source_change");
                 if (old.SourceStudyId != c.SourceStudyId || old.Kind != c.Kind) c.Reasons.Add("immutable_source_identity_changed");

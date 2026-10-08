@@ -147,7 +147,7 @@ class Boards(unittest.TestCase):
         self.assertEqual(decision['boardDecision']['ideaVersion'],1)
         self.assertEqual(decision['boardDecision']['sourceAuthor'],version1['author'])
         first=next(v for v in converted['ideas'][0]['versions'] if v['item']['id']==version1['id'])
-        self.assertEqual(first['decisions'],[dict(id=decision['id'],title=decision['title'])])
+        self.assertEqual(first['decisions'],[dict(id=decision['id'],title=decision['title'],status='Current',supersededById=None)])
         self.assertEqual(self.alex.request(path,payload)[1]['decisionId'],decision['id'])
         capture=self.post('/handoffs',dict(title='Board decision handoff',summary='Exact original revision',itemIds=[decision['id']],fileIds=[]))
         self.assertEqual(capture[0],200,capture[1]);snapshot=capture[1]

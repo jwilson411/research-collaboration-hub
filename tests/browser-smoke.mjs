@@ -17,8 +17,16 @@ const errors=[],external=[];
 context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
 page.on('pageerror',e=>errors.push(e.message));
 context.on('request',r=>{if(new URL(r.url()).origin!==url.origin)external.push(r.url());});
-const saved=async p=>{await p.locator('#task-form, #upload-form, #item-form, #document-form, #document-state-form').waitFor({state:'detached'});await p.getByText('Saved. The shared record has been updated.',{exact:true}).waitFor();};
+const saved=async p=>{await p.locator('#task-form, #upload-form, #item-form, #document-form, #document-state-form, #typed-decision-form').waitFor({state:'detached'});await p.getByText('Saved. The shared record has been updated.',{exact:true}).waitFor();};
+const revealRecord=async record=>{await page.getByRole('heading',{name:'Tasks & decisions',exact:true}).waitFor();await record.waitFor({state:'attached'});if(!await record.isVisible())await record.locator('xpath=ancestor::details').locator(':scope > summary').click();};
 const reflow=async p=>assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth),await p.evaluate(()=>innerWidth),'Page must not overflow viewport');
+async function auditPage(label){
+ if(process.env.HUB_BROWSER_AXE!=='true')return;
+ const AxeBuilder=require('@axe-core/playwright').default;
+ const audit=await new AxeBuilder({page}).analyze();
+ const violations=audit.violations.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)}));
+ assert.deepEqual(violations,[],label+' accessibility findings');console.log('AXE: '+label+' — 0 violations');
+}
 // Focus mode rechecks navigation against the disposable state created by the full suite.
 async function verifyExactIdeaLinks(){
  await page.goto(base);await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();
@@ -52,9 +60,9 @@ try {
  await page.getByLabel('Due date (optional)',{exact:true}).fill('2026-11-15');
  await page.locator('input[name=links]').first().check();
  await page.getByRole('button',{name:'Save task',exact:true}).click(); await saved(page);
- let task=page.locator('article.record').filter({has:page.getByRole('heading',{name:'Review the handoff checklist',exact:true})}).last();
+ let task=page.locator('article.record').filter({has:page.getByRole('heading',{name:'Review the handoff checklist',exact:true,includeHidden:true})}).last();
  assert.match(await task.innerText(),/In progress/i); assert.match(await task.innerText(),/2026-11-15/);
- await task.getByRole('button',{name:'Update task',exact:true}).click();
+ await revealRecord(task);await task.getByRole('button',{name:'Update task',exact:true}).click();
  await page.getByLabel('Status',{exact:true}).selectOption('Blocked');
  await page.getByRole('button',{name:'Save task',exact:true}).click(); await saved(page);
  assert.match(await task.innerText(),/Blocked/); await task.getByText('Task history (1 previous revision)',{exact:true}).click();
@@ -62,10 +70,10 @@ try {
  await page.screenshot({path:`${output}/tasks-desktop.png`,fullPage:true});
  await page.setViewportSize({width:390,height:844}); await reflow(page);
  await page.screenshot({path:`${output}/tasks-mobile.png`,fullPage:true});
- await task.getByRole('button',{name:'Update task',exact:true}).click();
+ await revealRecord(task);await task.getByRole('button',{name:'Update task',exact:true}).click();
  await page.getByLabel('Next action and context',{exact:true}).fill('Draft retained after a concurrent update.');
  const other=await context.newPage(); await other.goto(page.url());
- const otherTask=other.locator('article.record').filter({has:other.getByRole('heading',{name:'Review the handoff checklist',exact:true})}).last();
+ const otherTask=other.locator('article.record').filter({has:other.getByRole('heading',{name:'Review the handoff checklist',exact:true,includeHidden:true})}).last();
  await otherTask.getByRole('button',{name:'Update task',exact:true}).click();
  await other.getByLabel('Status',{exact:true}).selectOption('Done');
  await other.getByRole('button',{name:'Save task',exact:true}).click(); await saved(other);
@@ -95,15 +103,15 @@ try {
  await page.locator('.protocol-title').getByRole('link',{name:'handoff-checklist.txt · file version 1',exact:true}).waitFor();
  assert.equal(await page.locator('.protocol-title').getByText('handoff-checklist.txt · file version 2',{exact:true}).count(),0);
  await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();
- await task.getByRole('button',{name:'Update task',exact:true}).click();
+ await revealRecord(task);await task.getByRole('button',{name:'Update task',exact:true}).click();
  await page.getByLabel('handoff-checklist.txt · file version 1',{exact:true}).check();
  await page.getByRole('button',{name:'Save task',exact:true}).click();await saved(page);
- const citation=task.getByRole('link',{name:'handoff-checklist.txt · file version 1',exact:true}).first();await citation.waitFor();
+ await revealRecord(task);const citation=task.getByRole('link',{name:'handoff-checklist.txt · file version 1',exact:true}).first();await citation.waitFor();
  await page.getByRole('button',{name:'+ Record a decision',exact:true}).click();
- await page.getByLabel('Title',{exact:true}).fill('Retain the reviewed reference');
- await page.getByLabel('Decision, rationale, and alternatives',{exact:true}).fill('Keep the exact reviewed file version while preparing its successor.');
+ await page.getByLabel('Decision title',{exact:true}).fill('Retain the reviewed reference');
+ await page.getByLabel('Decision and rationale',{exact:true}).fill('Keep the exact reviewed file version while preparing its successor.');
  await page.getByLabel('handoff-checklist.txt · file version 1',{exact:true}).check();
- await page.getByRole('button',{name:'Save record',exact:true}).click();await saved(page);
+ await page.getByRole('button',{name:'Save decision',exact:true}).click();await saved(page);
  await page.locator('article.record').filter({has:page.getByRole('heading',{name:'Retain the reviewed reference',exact:true})}).getByRole('link',{name:'handoff-checklist.txt · file version 1',exact:true}).waitFor();
  await page.getByRole('link',{name:'Document library',exact:true}).click();
  await upload('synthetic-quarantined.pdf',Buffer.from('%PDF-1.4\nSynthetic quarantine test\n%%EOF'));
@@ -230,7 +238,7 @@ try {
  await page.locator('#handoff-detail').getByRole('heading',{name:'Reviewed orientation handoff',exact:true}).waitFor();
  const capturedText=await page.locator('#handoff-detail').innerText();
  await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();
- await task.getByRole('button',{name:'Update task',exact:true}).click();
+ await revealRecord(task);await task.getByRole('button',{name:'Update task',exact:true}).click();
  await page.getByLabel('Next action and context',{exact:true}).fill('Live task changed after the fixed handoff capture.');
  await page.getByRole('button',{name:'Save task',exact:true}).click();await saved(page);
  await page.getByRole('link',{name:'Activity & lifecycle',exact:true}).click();
@@ -265,7 +273,7 @@ try {
  await page.getByText('You have reviewed every currently available step. Return when the study evidence changes.',{exact:true}).waitFor();
 
  await reflow(page);assert.equal(await page.getByRole('main').count(),1);
- if(process.env.HUB_BROWSER_AXE==='true'){const AxeBuilder=require('@axe-core/playwright').default;const audit=await new AxeBuilder({page}).analyze();assert.deepEqual(audit.violations.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)})),[]);}
+ await auditPage('returning collaborator');
  await page.screenshot({path:`${output}/returning-collaborator-mobile.png`,fullPage:true});
  console.log('PASS: personal returning-collaborator persistence, isolation and keyboard focus');
  await page.getByRole('link',{name:'Ideas & whiteboards',exact:true}).click();
@@ -320,10 +328,48 @@ try {
  const reopenedForm=await page.locator('#stage-form').elementHandle();await page.getByLabel('Workspace stage',{exact:true}).selectOption('Active');const studyReopen=page.waitForResponse(r=>r.url().endsWith('/stage')&&r.request().method()==='POST');await page.getByRole('button',{name:'Update stage',exact:true}).click();assert.equal((await studyReopen).status(),200);await page.waitForFunction(form=>!form.isConnected,reopenedForm);
  await page.goto(boardUrl);await page.locator('#board-title').getByText('Prepare the next orientation',{exact:true}).waitFor();await createIdea('Resume with context','Continue the reopened study without losing earlier reasoning.');
  await reflow(page);assert.equal(await page.locator('#board-live').getAttribute('role'),'status');assert.equal(await page.locator('#board-live').getAttribute('aria-live'),'polite');
- if(process.env.HUB_BROWSER_AXE==='true'){const AxeBuilder=require('@axe-core/playwright').default;const audit=await new AxeBuilder({page}).analyze();assert.deepEqual(audit.violations.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)})),[]);}
+ await auditPage('idea session');
  await page.screenshot({path:`${output}/brainstorm-session-mobile.png`,fullPage:true});
  await verifyExactIdeaLinks();
+ console.log('PASS: all prior workflows and exact idea navigation');
+ await page.locator('#identity').selectOption('lead');await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();await page.getByRole('link',{name:'Open workspace'}).click();await page.getByRole('heading',{name:'At a glance',exact:true}).waitFor();
+ await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();await page.getByRole('button',{name:'+ Record a decision',exact:true}).click();
+ await page.getByLabel('Decision title',{exact:true}).fill('Choose the concise orientation guide');
+ const originalRationale='Use a concise guide as the working baseline. Preserve the alternative and the exact rationale.';
+ await page.getByLabel('Decision and rationale',{exact:true}).fill(originalRationale);
+ await page.getByLabel('Alternatives considered',{exact:true}).fill('A paired checklist and discussion guide is the alternative.');
+ await page.getByLabel('Decision owner',{exact:true}).selectOption('lead');await page.getByLabel('Effective date',{exact:true}).fill('2026-10-08');
+ await page.getByRole('button',{name:'Save decision',exact:true}).click();await saved(page);
+ const originalDecision=page.locator('article.record').filter({has:page.getByRole('heading',{name:'Choose the concise orientation guide',exact:true,includeHidden:true})});
+ const originalDecisionId=(await originalDecision.getAttribute('id')).replace('record-','');
+ await page.getByRole('link',{name:'Handoff snapshots',exact:true}).click();
+ await page.getByLabel('Snapshot title',{exact:true}).fill('Decision baseline before supersession');
+ await page.getByLabel('Scope, assumptions, open questions, and owners',{exact:true}).fill('Capture the original working choice and rationale before the team considers its successor.');
+ await page.getByLabel('Evidence selection',{exact:true}).selectOption('explicit');await page.getByText('Choose explicit evidence (optional)',{exact:true}).click();
+ await page.locator('#handoff-form input[name=itemIds][value="'+originalDecisionId+'"]').check();
+ const originalCaptureResponse=page.waitForResponse(r=>r.url().endsWith('/handoffs')&&r.request().method()==='POST');await page.getByRole('button',{name:'Capture snapshot',exact:true}).click();const originalCaptureResult=await originalCaptureResponse;assert.equal(originalCaptureResult.status(),200);const originalDecisionCapture=await originalCaptureResult.json();await page.getByText('Immutable handoff snapshot captured.',{exact:true}).waitFor();
+ await page.getByRole('link',{name:'Tasks & decisions',exact:true}).click();await originalDecision.getByRole('button',{name:'Supersede decision',exact:true}).click();
+ await page.getByLabel('Decision title',{exact:true}).fill('Use a paired orientation guide');await page.getByLabel('Decision and rationale',{exact:true}).fill('Use the concise checklist together with a short discussion guide for richer context.');
+ await page.getByLabel('Reason for superseding',{exact:true}).fill('The rehearsal showed that unresolved questions need to accompany the checklist.');
+ await page.getByRole('button',{name:'Save superseding decision',exact:true}).click();await saved(page);
+ assert.equal(await page.locator('.decisions-current').getByRole('heading',{name:'Choose the concise orientation guide',exact:true}).count(),0);
+ await page.locator('.decision-history > summary').click();await originalDecision.waitFor();assert.match(await originalDecision.innerText(),/Superseded decision/i);assert((await originalDecision.innerText()).includes(originalRationale));
+ const successor=page.locator('.decisions-current article.record').filter({has:page.getByRole('heading',{name:'Use a paired orientation guide',exact:true})});assert.match(await successor.innerText(),/Current decision/i);
+ await page.locator('.decision-history > summary').click();await successor.getByRole('link',{name:'Choose the concise orientation guide · decision version 1',exact:true}).click();await originalDecision.waitFor();assert.equal(await page.locator(':focus').getAttribute('id'),'record-'+originalDecisionId);
+ await reflow(page);await auditPage('decision supersession and history');await page.screenshot({path:`${output}/decisions-mobile.png`,fullPage:true});
+ await page.getByRole('link',{name:'Handoff snapshots',exact:true}).click();const baselineCard=page.locator('#handoff-list article').filter({has:page.getByRole('heading',{name:'Decision baseline before supersession',exact:true})});
+ const baselineRead=page.waitForResponse(r=>r.url().endsWith('/handoffs/'+originalDecisionCapture.id)&&r.request().method()==='GET');await baselineCard.getByRole('button',{name:'View snapshot',exact:true}).click();assert.deepEqual(await(await baselineRead).json(),originalDecisionCapture);await page.locator('#handoff-detail').getByRole('heading',{name:'Decision baseline before supersession',exact:true}).waitFor();assert((await page.locator('#handoff-detail').innerText()).includes(originalRationale));assert.equal(await page.locator('#handoff-detail').getByRole('heading',{name:'Use a paired orientation guide',exact:true}).count(),0);
+ await page.getByRole('link',{name:'Living documentation',exact:true}).click();await page.getByRole('button',{name:'Use Collaborator orientation template',exact:true}).click();
+ const suggested=await page.getByLabel('Version content',{exact:true}).inputValue();assert.match(suggested,/People and responsibilities/);assert.match(suggested,/Read first/);assert.match(suggested,/Local resources/);
+ await page.getByLabel('Document title',{exact:true}).fill('Orientation draft from the template');await page.getByLabel('Version content',{exact:true}).fill(suggested+'\n\nSynthetic walkthrough note: confirm ownership before the next handoff.');await page.getByRole('button',{name:'Save draft version',exact:true}).click();await saved(page);
+ const templatedDocument=page.locator('article.record').filter({has:page.getByRole('heading',{name:'Orientation draft from the template',exact:true})});await templatedDocument.waitFor();assert.match(await templatedDocument.locator('.task-facts').innerText(),/Draft/i);assert.match(await templatedDocument.innerText(),/Synthetic walkthrough note/);
+ await page.getByRole('link',{name:'Living documentation',exact:true}).click();await page.getByRole('button',{name:'Add resource pointer',exact:true}).click();
+ await page.getByLabel('Resource title',{exact:true}).fill('Synthetic methods reference');await page.getByLabel('Resource URL (optional)',{exact:true}).fill('https://synthetic@example.invalid/reference');await page.getByLabel('Local description or access guidance',{exact:true}).fill('Check the owner and existing access route before using this reference.');await page.getByLabel('Pointer owner',{exact:true}).selectOption('lead');await page.getByLabel('Source of this information',{exact:true}).fill('Synthetic documentation register');await page.getByLabel('Last verified date',{exact:true}).fill('2020-02-03');
+ const rejectedPointer=page.waitForResponse(r=>r.url().endsWith('/resources')&&r.request().method()==='POST');await page.getByRole('button',{name:'Save resource pointer',exact:true}).click();assert.equal((await rejectedPointer).status(),400);await page.getByText('Your pointer draft is retained.',{exact:false}).waitFor();assert.equal(await page.getByLabel('Resource title',{exact:true}).inputValue(),'Synthetic methods reference');
+ await page.getByLabel('Resource URL (optional)',{exact:true}).fill('https://example.invalid/reference');const pointerResponse=page.waitForResponse(r=>r.url().endsWith('/resources')&&r.request().method()==='POST');await page.getByRole('button',{name:'Save resource pointer',exact:true}).click();assert.equal((await pointerResponse).status(),200);await page.getByText('Resource pointer saved. No destination was contacted.',{exact:true}).waitFor();
+ const pointer=page.locator('.resource-pointer').filter({has:page.getByRole('heading',{name:'Synthetic methods reference',exact:true})});await pointer.waitFor();assert.match(await pointer.innerText(),/Riley/);assert.match(await pointer.innerText(),/2020-02-03/);assert.match(await pointer.innerText(),/Synthetic documentation register/);assert.match(await pointer.innerText(),/Review freshness/i);assert.equal(await pointer.getByRole('link').getAttribute('href'),'https://example.invalid/reference');
+ await reflow(page);await auditPage('templates and resource pointers');await page.screenshot({path:`${output}/templates-resources-mobile.png`,fullPage:true});
  assert.deepEqual(errors,[]); assert.deepEqual(external,[]);
- console.log('PASS: keyboard skip link, structured task create/edit/history/evidence, conflict draft recovery, identity isolation, mobile reflow, upload/download bytes and versions, quarantine, oversize error, explicit protocol retention, exact file citations, stale admin rejection, connected import preview/apply/repeat, stable document families and review roles, immutable handoff after edits and lifecycle changes, personal onboarding isolation, keyboard idea sessions and exact decision provenance, session/study lifecycle recovery, no page errors or external requests.');
+ console.log('PASS: keyboard skip link, structured task create/edit/history/evidence, conflict draft recovery, identity isolation, mobile reflow, upload/download bytes and versions, quarantine, oversize error, explicit protocol retention, exact file citations, stale admin rejection, connected import preview/apply/repeat, stable document families and review roles, immutable handoff after edits and lifecycle changes, personal onboarding isolation, keyboard idea sessions and exact decision provenance, session/study lifecycle recovery, immutable decision supersession, template drafts and governed resource pointers, no page errors or external requests.');
 }
-} finally {await browser.close();}
+} catch(error){await page.screenshot({path:`${output}/failure.png`,fullPage:true}).catch(()=>{});console.error('Browser failure location:',page.url());throw error;} finally {await browser.close();}

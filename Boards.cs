@@ -72,7 +72,11 @@ public static class BoardEndpoints
                         .AppendLine(version.Title).AppendLine(version.Body)
                         .AppendLine($"Author: {version.Author}; recorded: {version.CreatedAt:O}");
                     foreach (var decision in Decisions(study, version.Id))
-                        text.AppendLine("Linked decision: " + decision.Id + " — " + decision.Title);
+                        {
+                        var disposition = DecisionRules.CaptureState(study, decision);
+                        text.AppendLine("Linked decision: " + decision.Id + " — " + decision.Title + " [" + disposition.Status + "]"
+                            + (disposition.SupersededById is null ? "" : "; replacement: " + disposition.SupersededById));
+                    }
                 }
             }
             return Results.File(Encoding.UTF8.GetBytes(text.ToString()), "text/plain; charset=utf-8", "brainstorm-" + board.Id + ".txt");
@@ -216,7 +220,7 @@ public static class BoardEndpoints
         ideas = board.IdeaOrder.Select(ideaId => new {
             id = ideaId, currentVersionId = board.CurrentVersions.GetValueOrDefault(ideaId),
             current = study.Items.FirstOrDefault(i => i.Id == board.CurrentVersions.GetValueOrDefault(ideaId) && !i.Deleted),
-            versions = Versions(study, board.Id, ideaId).Select(i => new { item = i, decisions = Decisions(study, i.Id).Select(d => new { d.Id, d.Title }) }) }),
+            versions = Versions(study, board.Id, ideaId).Select(i => new { item = i, decisions = Decisions(study, i.Id).Select(d => new { d.Id, d.Title, status = DecisionRules.CaptureState(study, d).Status, supersededById = DecisionRules.CaptureState(study, d).SupersededById }) }) }),
         history = board.History, decisionId = decisionId is not null && study.Items.Any(i => i.Id == decisionId && !i.Deleted) ? decisionId : null };
     static List<Item> Versions(Study study, string boardId, string ideaId) => study.Items
         .Where(i => !i.Deleted && i.BoardIdea is { } version && version.BoardId == boardId && version.IdeaId == ideaId)
@@ -228,7 +232,7 @@ public static class BoardEndpoints
         : throw new Rejected(404, "Idea is unavailable in this session.");
     static IEnumerable<string> References(Item item) => (item.ParentId is null ? [] : new[] { item.ParentId })
         .Concat(item.DocumentId is null ? [] : new[] { item.DocumentId }).Concat(item.Task?.Links ?? [])
-        .Concat(item.Provenance?.ReferenceTargetIds ?? []).Concat(item.BoardDecision is null ? [] : new[] { item.BoardDecision.IdeaVersionId });
+        .Concat(item.Provenance?.ReferenceTargetIds ?? []).Concat(item.Decision?.ItemIds ?? []).Concat(item.BoardDecision is null ? [] : new[] { item.BoardDecision.IdeaVersionId });
     static void ValidateMetadata(Study study, BoardInput input)
     {
         if (string.IsNullOrWhiteSpace(input.Title) || input.Title.Length > 180 || string.IsNullOrWhiteSpace(input.Purpose) || input.Purpose.Length > 4000 ||
