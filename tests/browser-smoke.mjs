@@ -13,12 +13,15 @@ await mkdir(output,{recursive:true});
 const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{}),args:process.env.BROWSER_NO_SANDBOX==='true'?['--no-sandbox']:[]});
 const context=await browser.newContext({viewport:{width:1440,height:1000}});
 const page=await context.newPage();
+context.setDefaultTimeout(15000);
 const errors=[],external=[];
 context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
 page.on('pageerror',e=>errors.push(e.message));
 context.on('request',r=>{if(new URL(r.url()).origin!==url.origin)external.push(r.url());});
 const saved=async p=>{await p.locator('#task-form, #upload-form, #item-form, #document-form, #document-state-form, #typed-decision-form').waitFor({state:'detached'});await p.getByText('Saved. The shared record has been updated.',{exact:true}).waitFor();};
-const revealRecord=async record=>{await page.getByRole('heading',{name:'Tasks & decisions',exact:true}).waitFor();await record.waitFor({state:'attached'});if(!await record.isVisible())await record.locator('xpath=ancestor::details').locator(':scope > summary').click();};
+// Resolve a single immutable record before opening any collapsed ancestors.
+const revealHistory=async record=>{await record.waitFor({state:'attached'});const id=await record.getAttribute('id');const exact=id?page.locator('[id='+JSON.stringify(id)+']'):record;for(const disclosure of await exact.locator('xpath=ancestor::details').all())if(await disclosure.getAttribute('open')===null)await disclosure.locator(':scope > summary').click();await exact.waitFor({state:'visible'});return exact;};
+const revealRecord=async record=>{await page.getByRole('heading',{name:'Tasks & decisions',exact:true}).waitFor();await revealHistory(record);};
 const reflow=async p=>assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth),await p.evaluate(()=>innerWidth),'Page must not overflow viewport');
 async function auditPage(label){
  if(process.env.HUB_BROWSER_AXE!=='true')return;
@@ -159,7 +162,7 @@ try {
  await page.getByText('Saved import reports',{exact:true}).click();await page.locator('#import-reports .import-report').first().waitFor();
  await reflow(page);await page.screenshot({path:`${output}/import-mobile.png`,fullPage:true});
  await page.getByRole('link',{name:'Document library',exact:true}).click();
- const importedV1=page.locator('article.file-record').filter({hasText:'synthetic-protocol-v1.txt'});await importedV1.waitFor();assert.match(await importedV1.innerText(),/File version 1/);assert.match(await importedV1.innerText(),/Feb 3, 2020/);
+ const importedV1=page.locator('article.file-record').filter({hasText:'synthetic-protocol-v1.txt'});await revealHistory(importedV1);assert.match(await importedV1.innerText(),/File version 1/);assert.match(await importedV1.innerText(),/Feb 3, 2020/);
  const importedV2=page.locator('article.file-record').filter({hasText:'synthetic-protocol-v2.txt'});assert.match(await importedV2.innerText(),/File version 2/);
  assert.equal(await importedV1.count(),1);assert.equal(await importedV2.count(),1);
  await page.getByRole('link',{name:'Discussions',exact:true}).click();
@@ -179,8 +182,8 @@ try {
  console.log('PASS: configuration concurrency and connected import fidelity');
  // Stable text families and study-specific review roles are independent of application administration.
  const switchStudyIdentity=async identity=>{await page.locator('#identity').selectOption(identity);await page.getByRole('heading',{name:'My studies',exact:true}).waitFor();await page.getByRole('link',{name:'Open workspace'}).click();await page.getByRole('heading',{name:'At a glance',exact:true}).waitFor();await page.getByRole('link',{name:'Document library',exact:true}).click();};
- const documentRecord=title=>page.locator('article.record').filter({has:page.getByRole('heading',{name:title,exact:true})});
- const reviewState=async(title,action,status,reason)=>{await documentRecord(title).getByRole('button',{name:action,exact:true}).click();await page.getByLabel('Reason for review-state change',{exact:true}).fill(reason);await page.getByRole('button',{name:'Confirm '+status,exact:true}).click();await saved(page);};
+ const documentRecord=title=>page.locator('article.record').filter({has:page.getByRole('heading',{name:title,exact:true,includeHidden:true})});
+ const reviewState=async(title,action,status,reason)=>{await revealHistory(documentRecord(title));await documentRecord(title).getByRole('button',{name:action,exact:true}).click();await page.getByLabel('Reason for review-state change',{exact:true}).fill(reason);await page.getByRole('button',{name:'Confirm '+status,exact:true}).click();await saved(page);};
  await page.getByRole('link',{name:'Document library',exact:true}).click();
  await page.getByRole('button',{name:'Add document',exact:true}).click();
  await page.getByLabel('Document title',{exact:true}).fill('Orientation review packet');
@@ -193,7 +196,7 @@ try {
  await page.getByRole('button',{name:'Save draft version',exact:true}).click();await saved(page);
  const familyAfter=await documentRecord('Revised orientation packet').locator('.task-facts').innerText();assert.equal(familyBefore,familyAfter);
  assert.match(await documentRecord('Revised orientation packet').innerText(),/Version 2/);
- assert.match(await documentRecord('Orientation review packet').innerText(),/Initial synthetic orientation packet/);
+ await revealHistory(documentRecord('Orientation review packet'));assert.match(await documentRecord('Orientation review packet').innerText(),/Initial synthetic orientation packet/);
  await reviewState('Revised orientation packet','Submit for review','Review','Ready for a second participant to review.');
  assert.equal(await documentRecord('Revised orientation packet').getByRole('button',{name:'Accept version',exact:true}).count(),0);
  assert.equal(await documentRecord('Revised orientation packet').getByRole('button',{name:'Return to draft',exact:true}).count(),0);

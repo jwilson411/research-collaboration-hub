@@ -2,15 +2,15 @@
 
 ## Next useful local milestone
 
-Add reviewed quarantine case ownership and disposition with exportable reconciliation receipts. Preserve source provenance and exact-byte verification, make interrupted/repeated applies resumable, and distinguish source changes from protected target-side edits. The connected synthetic importer remains a demonstration rather than an approved production migration process.
+The [requirements evidence matrix](REQUIREMENTS-MATRIX.md) is the basis for prioritization. The highest-value remaining local gap is import exception ownership and disposition: add assigned owners, an immutable resolution trail, guarded retry, and exportable reconciliation receipts. Acceptance should prove that every synthetic source record has an outcome, quarantined material remains inaccessible until resolved, and repeated resolution cannot duplicate or overwrite protected target work (CAP-47–54).
 
-Further polish can add a governed template catalog and resource-pointer replacement/verification history. The current bundled outlines and create-only pointers intentionally make no approval or automatic verification claim.
+Next, add resource replacement/reverification history and versioned template definitions without changing existing documents or captures (CAP-03, CAP-08). Search coverage is now explicit and paginated; future work can add agreed metadata filters and migrated-link resolution with denied/deleted-link tests (CAP-21, CAP-26–27, CAP-54). A synthetic idempotent provisioning seam can follow, keeping approval and real membership outside the application (CAP-10).
 
-## Recovery and import follow-up
+## Policy-dependent local rehearsals
 
-- Extend the stopped synthetic JSON/blob restore rehearsal to approved production storage, crash scenarios and import rollback with protected target-side edits. Import currently quarantines changed binary source versions rather than overwrite exact evidence IDs; new source version IDs are required.
-- Add reviewed quarantine case ownership/disposition and exportable reconciliation receipts. The connected synthetic importer is not a real source extractor or approved production migration process.
-- Replace the synthetic file release policy with an approved scanner/result lifecycle, quotas, reviewed orphan accounting and records-policy disposal. Keep inaccessible orphan bytes isolated until a retention decision exists.
+- Define retention/hold semantics before building disposal; test mutation, import and cleanup paths together (CAP-39).
+- Rehearse migration rollback that preserves target-side edits separately from the stopped JSON/blob backup restore (CAP-53).
+- Replace the synthetic release demonstration with an approved scanner/result lifecycle, quotas and reviewed orphan accounting only when its policy and execution boundary are available (CAP-22).
 
 ## Production gates that remain separate
 

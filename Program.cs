@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Antiforgery;
 
 var builder = WebApplication.CreateBuilder(args);
 if (!builder.Environment.IsDevelopment() || Environment.GetEnvironmentVariable("HUB_DEMO_ENABLED") != "true") throw new InvalidOperationException("Demo provider is Development-only. Production identity and storage adapters require implementation and validation.");
+if (builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any()) throw new InvalidOperationException("Custom Kestrel endpoints are disabled for the local demo.");
+builder.WebHost.ConfigureKestrel(options => options.Configure(new ConfigurationBuilder().Build(), reloadOnChange: false));
 builder.WebHost.UseUrls("http://127.0.0.1:5080");
 builder.Services.AddSingleton<AttachmentStorage>();
 builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.Name = "hub.csrf"; o.Cookie.SameSite = SameSiteMode.Strict; });
@@ -59,16 +61,7 @@ app.MapPost("/api/session", (HttpContext c,SessionInput input) => {
 });
 app.MapGet("/api/studies",(HttpContext c,IStudyStore store)=>store.Read(s=>s.Studies.Where(x=>Access(s,Identity(c),x)).ToArray()));
 app.MapGet("/api/studies/{id}",(string id,HttpContext c,IStudyStore store)=>store.Read<IResult>(s=>s.Studies.FirstOrDefault(x=>x.Id==id && Access(s,Identity(c),x)) is {} study ? Results.Ok(study) : Results.NotFound()));
-app.MapGet("/api/search",(string? q,HttpContext c,IStudyStore store)=>store.Read<IResult>(s=> {
- if(q?.Length>200)return Results.BadRequest();
- var query=q??"";
- var hits=new List<object>();
- foreach(var study in s.Studies.Where(study=>Access(s,Identity(c),study))) {
-  hits.AddRange(study.Items.Where(item=>EvidenceRules.ItemAvailable(study,item.Id)&&(item.Title+" "+item.Body).Contains(query,StringComparison.OrdinalIgnoreCase)).Select(item=>(object)new {studyId=study.Id,studyTitle=study.Title,item}));
-  hits.AddRange(study.Files.Where(file=>!file.Deleted&&(file.ParentId is null||EvidenceRules.ItemAvailable(study,file.ParentId))&&file.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).Select(file=>(object)new {studyId=study.Id,studyTitle=study.Title,item=new {id=file.Id,kind="file",title=file.Name,body="File version "+file.Version+" · "+file.Status}}));
- }
- return Results.Ok(hits.Take(100));
-}));
+app.MapSearchEndpoints(Identity,Access);
 app.MapPost("/api/studies/{id}/items",(string id,ItemInput input,HttpContext c,IStudyStore store,AttachmentStorage storage)=>store.Change(s=> {
  var study=s.Studies.FirstOrDefault(x=>x.Id==id && Access(s,Identity(c),x)); if(study is null)return Results.NotFound();
  if (!Guid.TryParse(input.RequestId,out _) || !new[]{"document","documentation","discussion","reply","decision","idea"}.Contains(input.Kind) || string.IsNullOrWhiteSpace(input.Title) || input.Title.Length>180 || string.IsNullOrWhiteSpace(input.Body) || input.Body.Length>20000) return Results.BadRequest(new {error="Provide a valid kind, title (1–180), body (1–20000), and request identifier."});
@@ -128,6 +121,7 @@ app.MapProtocolEndpoints(Identity,Access);
 app.MapSyntheticImportEndpoints(Identity,Access);
 app.MapTaskEndpoints(Identity,Access);
 app.MapAttachmentEndpoints(Identity,Access);
+app.MapFallback("/api/{**path}",()=>Results.NotFound(new {error="Unknown API endpoint."}));
 app.MapFallbackToFile("index.html");app.Run();
 record RevisionInput(int ExpectedRevision,string RequestId);
 record SessionInput(string Identity);
@@ -142,7 +136,7 @@ public sealed class JsonStudyStore:IStudyStore {
  readonly string path;readonly object gate=new();State state;readonly JsonSerializerOptions json=new(JsonSerializerDefaults.Web){WriteIndented=true};
  public JsonStudyStore(string path){this.path=Path.GetFullPath(path);Directory.CreateDirectory(Path.GetDirectoryName(this.path)!);state=File.Exists(path)?JsonSerializer.Deserialize<State>(File.ReadAllText(path),json)??throw new InvalidDataException():Demo.Seed();}
  public T Read<T>(Func<State,T> read){lock(gate)return read(JsonSerializer.Deserialize<State>(JsonSerializer.Serialize(state,json),json)!);}
- public IResult Change(Func<State,IResult> change){lock(gate){var copy=JsonSerializer.Deserialize<State>(JsonSerializer.Serialize(state,json),json)!;var result=change(copy);if(result is Microsoft.AspNetCore.Http.IStatusCodeHttpResult status && status.StatusCode>=400)return result;var tmp=path+".tmp";File.WriteAllText(tmp,JsonSerializer.Serialize(copy,json));File.Move(tmp,path,true);state=copy;return result;}}
+ public IResult Change(Func<State,IResult> change){lock(gate){var copy=JsonSerializer.Deserialize<State>(JsonSerializer.Serialize(state,json),json)!;var result=change(copy);if(result is Microsoft.AspNetCore.Http.IStatusCodeHttpResult status && status.StatusCode>=400)return result;var tmp=path+".tmp";try {File.WriteAllText(tmp,JsonSerializer.Serialize(copy,json));File.Move(tmp,path,true);} catch(Exception error) when(error is IOException or UnauthorizedAccessException) {return Results.Json(new {error="Local demo storage is unavailable. Your change was not saved. Retry after restoring storage access."},statusCode:503);} state=copy;return result;}}
 }
 public static class Demo {
 

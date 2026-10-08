@@ -1,6 +1,6 @@
 # Feature and evidence matrix
 
-Local implementation is distinct from production readiness. Demo policy choices are not approved organizational policy.
+See the [full requirements evidence matrix](REQUIREMENTS-MATRIX.md) for the comprehensive capability audit. Local implementation is distinct from production readiness. Demo policy choices are not approved organizational policy.
 
 | Capability | Implemented local behavior | Remaining gate |
 |---|---|---|

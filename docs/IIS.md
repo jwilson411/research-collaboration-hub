@@ -44,3 +44,7 @@ A future approved IIS validation must cover: actual authenticated principal/grou
 - [Microsoft: Data Protection configuration](https://learn.microsoft.com/en-us/aspnet/core/security/data-protection/configuration/overview?view=aspnetcore-10.0)
 
 Sources checked October 8, 2026. These instructions express required implementation and verification work, not a tested deployment or approval claim.
+
+## Windows local preview launcher
+
+From a checkout with a serviced .NET 10 SDK, run `./scripts/Start-LocalPreview.ps1`. The script checks for the SDK, changes to the project directory, restores locked packages and pins Development with the JSON provider. All uploads remain quarantined unless `-ReleaseSyntheticFiles` is explicitly supplied. It does not change execution policy, install Windows features, configure IIS or create network bindings. The application binds only `127.0.0.1:5080`; open that address on the same computer. Process environment changes are restored after exit. Windows/PowerShell execution has not been validated in this Linux environment; these launcher checks do not establish IIS readiness.
