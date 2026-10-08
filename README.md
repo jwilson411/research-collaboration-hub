@@ -18,12 +18,13 @@ The application requires explicit demo enablement and Development, validates loo
 
 ## Five-minute walkthrough
 
-1. As Alex, open Atlas. Review its documentation, discussion and latest document reference. The preview does not imply a formally accepted protocol designation.
-2. Open Tasks & decisions. Create a task with Alex as assignee, a due date, status and document/discussion evidence. Edit it and inspect the retained earlier revision.
+1. As Alex, open Atlas. Review its documentation and discussion. Select an exact text or released file version as the current study protocol, with a reason. This is a workspace designation, not an external approval. Uploading a newer version does not change it.
+2. Open Tasks & decisions. Create a task with Alex as assignee, a due date, status and exact document/discussion/file-version evidence. Edit it and inspect the retained earlier revision.
 3. Open Document library. Upload a small `.txt` file and download it. Upload `fixtures/demo-attachment.png` to demonstrate a verified-byte binary round trip. Upload a PDF to see quarantine: its download remains blocked. Use New version to retain a file's earlier version.
 4. Attach a file to a discussion/reply. A deleted parent makes its attachment unavailable. Record an idea and promote it into a linked decision.
-5. Switch to Sam: Atlas URLs, search and downloads are inaccessible. Reopen Beacon to continue its historical record. Switch to Morgan to inspect roles, mapped groups, effective access and audit.
-6. Submit edits from two tabs. A stale submission is rejected and its draft stays in the form. Stop/restart: saved state persists.
+5. Switch to Sam: Atlas URLs, search and downloads are inaccessible. Reopen Beacon to continue its historical record. Switch to Morgan to inspect roles, mapped groups, effective access and audit. Two open admin forms cannot silently overwrite one another: stale configuration is rejected.
+6. To rehearse ingestion, Morgan grants Alex the Administrator application role. Alex still has only Atlas study access. Return as Alex, open Atlas's Activity & lifecycle → Synthetic import rehearsal, choose `fixtures/app-import.json`, preview all record outcomes, then apply. Inspect the imported file versions, historical thread/reply, attachment and decision evidence. Repeat the manifest: no duplicate records or versions are created.
+7. Submit edits from two tabs. A stale submission is rejected and its draft stays in the form. Stop/restart: saved state persists.
 
 ## Persistence and attachments
 

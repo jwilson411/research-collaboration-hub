@@ -3,9 +3,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-public record TaskRevision(int Version, string Title, string Body, string? Assignee, string? DueDate, string Status, string[] Links, string Actor, DateTimeOffset At);
-public record TaskDetails(string? Assignee, string? DueDate, string Status, string[] Links, List<TaskRevision> History);
-public record TaskInput(string Title, string Body, string? Assignee, string? DueDate, string Status, string[]? Links, int ExpectedRevision, string RequestId);
+public record TaskRevision(int Version, string Title, string Body, string? Assignee, string? DueDate, string Status, string[] Links, string Actor, DateTimeOffset At) { public string[] FileLinks {get;init;}=[]; }
+public record TaskDetails(string? Assignee, string? DueDate, string Status, string[] Links, List<TaskRevision> History) { public string[] FileLinks {get;init;}=[]; }
+public record TaskInput(string Title, string Body, string? Assignee, string? DueDate, string Status, string[]? Links, int ExpectedRevision, string RequestId, string[]? FileLinks=null);
 
 public static class TaskEndpoints
 {
@@ -16,11 +16,11 @@ public static class TaskEndpoints
             var study=state.Studies.FirstOrDefault(s=>s.Id==id&&access(state,identity(context),s));
             return study is null ? Results.NotFound() : Results.Ok(Demo.Identities.Where(user=>Demo.Groups.GetValueOrDefault(user.Id,[]).Contains(study.GroupId)).Select(user=>new {user.Id,user.Name}));
         }));
-        app.MapPost("/api/studies/{id}/tasks", (string id,TaskInput input,HttpContext context,IStudyStore store) => Change(id,null,input,context,store,identity,access));
-        app.MapPost("/api/studies/{id}/tasks/{taskId}", (string id,string taskId,TaskInput input,HttpContext context,IStudyStore store) => Change(id,taskId,input,context,store,identity,access));
+        app.MapPost("/api/studies/{id}/tasks", (string id,TaskInput input,HttpContext context,IStudyStore store,AttachmentStorage storage) => Change(id,null,input,context,store,identity,access,storage));
+        app.MapPost("/api/studies/{id}/tasks/{taskId}", (string id,string taskId,TaskInput input,HttpContext context,IStudyStore store,AttachmentStorage storage) => Change(id,taskId,input,context,store,identity,access,storage));
     }
 
-    static IResult Change(string id,string? taskId,TaskInput input,HttpContext context,IStudyStore store,Func<HttpContext,string> identity,Func<State,string,Study,bool> access) => store.Change(state =>
+    static IResult Change(string id,string? taskId,TaskInput input,HttpContext context,IStudyStore store,Func<HttpContext,string> identity,Func<State,string,Study,bool> access,AttachmentStorage storage) => store.Change(state =>
     {
         var actor=identity(context);
         var study=state.Studies.FirstOrDefault(s=>s.Id==id&&access(state,actor,s));
@@ -42,11 +42,14 @@ public static class TaskEndpoints
         var links=input.Links??[];
         if(links.Length>30||links.Distinct().Count()!=links.Length||links.Any(link=>string.IsNullOrWhiteSpace(link)||!study.Items.Any(i=>i.Id==link&&!i.Deleted&&new[]{"document","documentation","discussion","reply","decision","idea"}.Contains(i.Kind))))
             return Results.BadRequest(new {error="Evidence must contain up to 30 distinct live records from this study."});
+        var fileLinks=input.FileLinks??[];
+        if(fileLinks.Length>30||fileLinks.Distinct().Count()!=fileLinks.Length||fileLinks.Any(link=>string.IsNullOrWhiteSpace(link)||!EvidenceRules.FileAvailable(study,link,storage)))
+            return Results.BadRequest(new {error="File evidence must contain up to 30 distinct released live file versions from this study."});
         var now=DateTimeOffset.UtcNow;
         var history=current?.Task?.History.ToList()??[];
         if(current is not null)
-            history.Add(new(current.Version,current.Title,current.Body,current.Task?.Assignee,current.Task?.DueDate,current.Task?.Status??"Open",current.Task?.Links??(current.DocumentId is {} document?[document]:[]),current.Author,current.CreatedAt));
-        var details=new TaskDetails(assignee,dueDate,input.Status,links,history);
+            history.Add(new(current.Version,current.Title,current.Body,current.Task?.Assignee,current.Task?.DueDate,current.Task?.Status??"Open",current.Task?.Links??(current.DocumentId is {} document?[document]:[]),current.Author,current.CreatedAt){FileLinks=current.Task?.FileLinks??[]});
+        var details=new TaskDetails(assignee,dueDate,input.Status,links,history){FileLinks=fileLinks};
         var item=new Item(taskId??Guid.NewGuid().ToString(),"task",input.Title.Trim(),input.Body,null,null,(current?.Version??0)+1,actor,now){Task=details};
         if(current is null)study.Items.Add(item);else study.Items[study.Items.IndexOf(current)]=item;
         study.Requests.Add(input.RequestId,fingerprint);study.Revision++;

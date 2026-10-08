@@ -1,5 +1,6 @@
 """Attachment boundary tests; synthetic bytes only; owns loopback port 5080."""
 import base64
+import html
 import json
 import os
 from pathlib import Path
@@ -137,6 +138,7 @@ class Attachments(unittest.TestCase):
         for value in [self.study(), self.alex.request("/api/studies")[1]]:
             self.assertNotIn(file["name"], json.dumps(value))
             self.assertNotIn(file["sha256"], json.dumps(value))
+
         self.assertEqual(self.alex.request("/api/studies/atlas/files", self.upload(documentId=file["id"]))[0], 400)
         status, study, _ = self.alex.request("/api/studies/atlas/items", self.item())
         self.assertEqual(status, 200)
@@ -153,14 +155,40 @@ class Attachments(unittest.TestCase):
             self.assertNotIn(file["name"], json.dumps(value))
             self.assertNotIn(file["sha256"], json.dumps(value))
 
+    def test_current_protocol_file_requires_reassignment_before_delete(self):
+        _, study, file = self.create(name="selected-protocol.txt")
+        selection = dict(kind="file", id=file["id"], reason="Synthetic protocol selection",
+                         expectedRevision=study["revision"], requestId=str(uuid.uuid4()))
+        status, selected, _ = self.alex.request("/api/studies/atlas/protocol", selection)
+        self.assertEqual(status, 200)
+        self.assertEqual(selected["currentProtocol"]["id"], file["id"])
+        delete = dict(expectedRevision=selected["revision"], requestId=str(uuid.uuid4()))
+        path = f'/api/studies/atlas/files/{file["id"]}'
+        self.assertEqual(self.alex.request(path + "/delete", delete)[0], 409)
+        self.assertEqual(self.alex.request(path + "/download")[0], 200)
+        clear = dict(kind=None, id=None, reason="Clear before removal",
+                     expectedRevision=self.study()["revision"], requestId=str(uuid.uuid4()))
+        self.assertEqual(self.alex.request("/api/studies/atlas/protocol", clear)[0], 200)
+        delete = dict(expectedRevision=self.study()["revision"], requestId=str(uuid.uuid4()))
+        self.assertEqual(self.alex.request(path + "/delete", delete)[0], 200)
+        _, study, attached = self.create(parentId="question-1")
+        invalid = dict(kind="file", id=attached["id"], reason="Discussion files cannot be protocols",
+                       expectedRevision=study["revision"], requestId=str(uuid.uuid4()))
+        self.assertEqual(self.alex.request("/api/studies/atlas/protocol", invalid)[0], 400)
+
     def test_tampering_missing_blob_and_orphan(self):
         _, _, file = self.create()
         path = self.blobs / (file["id"] + ".blob")
         path.write_bytes(b"x" * file["size"])
         url = f'/api/studies/atlas/files/{file["id"]}/download'
         self.assertEqual(self.alex.request(url)[0], 409)
+        designation = dict(kind="file", id=file["id"], reason="Cannot cite damaged bytes",
+                           expectedRevision=self.study()["revision"], requestId=str(uuid.uuid4()))
+        self.assertEqual(self.alex.request("/api/studies/atlas/protocol", designation)[0], 400)
         path.unlink()
         self.assertEqual(self.alex.request(url)[0], 404)
+        designation["requestId"] = str(uuid.uuid4())
+        self.assertEqual(self.alex.request("/api/studies/atlas/protocol", designation)[0], 400)
         orphan = uuid.uuid4().hex
         (self.blobs / (orphan + ".blob")).write_bytes(b"Synthetic interrupted write")
         self.assertEqual(self.alex.request(f"/api/studies/atlas/files/{orphan}/download")[0], 404)
@@ -176,17 +204,56 @@ class Attachments(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(b"Attachment storage must", result.stdout)
 
+    def test_storage_immutable_blob_retry(self):
+        harness = Path(self.temp.name) / "storage-check"
+        harness.mkdir()
+        assembly = html.escape(str(api.ROOT / "bin/Debug/net10.0/ResearchHub.dll"))
+        (harness / "Check.csproj").write_text(f'''<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+<ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App"/><Reference Include="ResearchHub"><HintPath>{assembly}</HintPath></Reference></ItemGroup></Project>''')
+        (harness / "Program.cs").write_text('''using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.FileProviders;
+var storage = new AttachmentStorage(new EnvironmentStub(args[0]));
+var id = Guid.NewGuid().ToString("N"); var bytes = "Synthetic retry bytes"u8.ToArray();
+storage.WriteBlob(id, bytes);
+var path = Path.Combine(System.Environment.GetEnvironmentVariable("HUB_FILES")!, id + ".blob");
+var before = File.GetLastWriteTimeUtc(path);
+storage.WriteBlob(id, bytes);
+if (File.GetLastWriteTimeUtc(path) != before) throw new Exception("Retry overwrote bytes");
+try { storage.WriteBlob(id, "different"u8.ToArray()); throw new Exception("Conflict accepted"); }
+catch (InvalidDataException) { }
+var linkId = Guid.NewGuid().ToString("N");
+var link = Path.Combine(System.Environment.GetEnvironmentVariable("HUB_FILES")!, linkId + ".blob");
+File.CreateSymbolicLink(link, path);
+try { storage.WriteBlob(linkId, bytes); throw new Exception("Symlink accepted"); }
+catch (InvalidDataException) { }
+if (!File.ReadAllBytes(path).SequenceEqual(bytes)) throw new Exception("Original bytes changed");
+if (Directory.GetFiles(System.Environment.GetEnvironmentVariable("HUB_FILES")!, "*.pending").Length != 0)
+    throw new Exception("Successful writes left temporary files");
+File.Delete(link); File.Delete(path);
+Console.WriteLine("Immutable blob checks passed");
+class EnvironmentStub(string root) : IHostEnvironment {
+ public string EnvironmentName {get;set;}="Development";
+ public string ApplicationName {get;set;}="StorageCheck";
+ public string ContentRootPath {get;set;}=root;
+ public IFileProvider ContentRootFileProvider {get;set;}=new NullFileProvider();
+}''')
+        result = subprocess.run([api.DOTNET, "run", "--project", str(harness / "Check.csproj"), "--", str(api.ROOT)],
+                                env=self.env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stdout.decode())
+        self.assertIn(b"Immutable blob checks passed", result.stdout)
+
     def test_revocation(self):
         marker = "Revocation" + uuid.uuid4().hex
         _, _, file = self.create(name=marker + ".txt")
         self.assertEqual(len(self.alex.request("/api/search?q=" + marker)[1]), 1)
-        self.assertEqual(self.admin.request("/api/admin/mapping", {"studyId": "atlas", "groupId": "demo-group-b"})[0], 200)
+        self.assertEqual(self.admin.config("/api/admin/mapping", {"studyId": "atlas", "groupId": "demo-group-b"})[0], 200)
         self.assertEqual(self.alex.request(f'/api/studies/atlas/files/{file["id"]}/download')[0], 404)
         self.assertEqual(self.alex.request("/api/studies/atlas/files")[0], 404)
         self.assertEqual(self.alex.request("/api/search?q=" + marker)[1], [])
         self.assertEqual(self.admin.request("/api/search?q=" + marker)[1], [])
         self.assertEqual(len(self.sam.request("/api/search?q=" + marker)[1]), 1)
-        self.assertEqual(self.admin.request("/api/admin/mapping", {"studyId": "atlas", "groupId": "demo-group-a"})[0], 200)
+        self.assertEqual(self.admin.config("/api/admin/mapping", {"studyId": "atlas", "groupId": "demo-group-a"})[0], 200)
         self.assertEqual(len(self.alex.request("/api/search?q=" + marker)[1]), 1)
         self.assertEqual(self.sam.request("/api/search?q=" + marker)[1], [])
 
@@ -202,6 +269,9 @@ class Attachments(unittest.TestCase):
         self.start()
         self.alex = api.Client().login("alex")
         self.assertEqual(self.alex.request(f'/api/studies/atlas/files/{file["id"]}/download')[0], 409)
+        designation = dict(kind="file", id=file["id"], reason="Disabled release policy",
+                           expectedRevision=self.study()["revision"], requestId=str(uuid.uuid4()))
+        self.assertEqual(self.alex.request("/api/studies/atlas/protocol", designation)[0], 400)
         _, _, quarantined = self.create()
         self.assertEqual(quarantined["status"], "Quarantined")
         self.assertEqual(self.alex.request(f'/api/studies/atlas/files/{quarantined["id"]}/download')[0], 409)

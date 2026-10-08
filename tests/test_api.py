@@ -45,6 +45,10 @@ class Client:
             pass
         return response.status, data, response.headers
 
+    def config(self, path, payload, **options):
+        revision = self.request("/api/admin")[1]["configRevision"]
+        return self.request(path, dict(payload, expectedRevision=revision, requestId=str(uuid.uuid4())), **options)
+
     def login(self, identity):
         status, session, _ = self.request("/api/session")
         assert status == 200
@@ -186,17 +190,17 @@ class Integration(unittest.TestCase):
         self.assertNotIn(secret_body, json.dumps(self.alex.request("/api/studies")[1]))
 
     def test_mapping_revocation_and_roles_do_not_grant_membership(self):
-        self.assertEqual(self.admin.request("/api/admin/role", {"identity": "alex", "role": "Administrator"})[0], 200)
+        self.assertEqual(self.admin.config("/api/admin/role", {"identity": "alex", "role": "Administrator"})[0], 200)
         self.assertEqual(self.alex.request("/api/admin")[0], 200)
         self.assertEqual(self.alex.request("/api/studies/beacon")[0], 404)
-        self.assertEqual(self.admin.request("/api/admin/role", {"identity": "alex", "role": "Researcher"})[0], 200)
+        self.assertEqual(self.admin.config("/api/admin/role", {"identity": "alex", "role": "Researcher"})[0], 200)
         self.assertEqual(self.alex.request("/api/admin")[0], 403)
-        self.assertEqual(self.admin.request("/api/admin/mapping", {"studyId": "atlas", "groupId": "demo-group-b"})[0], 200)
+        self.assertEqual(self.admin.config("/api/admin/mapping", {"studyId": "atlas", "groupId": "demo-group-b"})[0], 200)
         self.assertEqual(self.alex.request("/api/studies/atlas")[0], 404)
         self.assertEqual(self.alex.request("/api/search")[1], [])
         self.assertEqual(self.alex.request("/api/studies/atlas/documents/protocol-1/download")[0], 404)
         self.assertEqual(self.sam.request("/api/studies/atlas")[0], 200)
-        self.assertEqual(self.admin.request("/api/admin/mapping", {"studyId": "atlas", "groupId": "demo-group-a"})[0], 200)
+        self.assertEqual(self.admin.config("/api/admin/mapping", {"studyId": "atlas", "groupId": "demo-group-a"})[0], 200)
         self.assertEqual(self.alex.request("/api/studies/atlas")[0], 200)
 
     def test_lifecycle_and_reopen(self):
