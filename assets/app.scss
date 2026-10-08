@@ -96,7 +96,8 @@ body { margin: 0; }
 .startup-state { margin-top: units(4); }
 code { overflow-wrap: anywhere; }
 .notice { margin-bottom: units(3); }
-[data-js-control][hidden],#main[hidden] { display: none !important; }
+// Preserve the HTML hidden contract, including role-gated navigation.
+[hidden] { display: none !important; }
 @media(max-width: 63.99em) {
   .overview-grid { grid-template-columns: minmax(0,1fr); }
   .template-grid { grid-template-columns: minmax(0,1fr); }
