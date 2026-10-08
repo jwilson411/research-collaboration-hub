@@ -8,8 +8,27 @@ var builder = WebApplication.CreateBuilder(args);
 if (!builder.Environment.IsDevelopment() || Environment.GetEnvironmentVariable("HUB_DEMO_ENABLED") != "true") throw new InvalidOperationException("Demo provider is Development-only. Production identity and storage adapters require implementation and validation.");
 builder.WebHost.UseUrls("http://127.0.0.1:5080");
 builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.Name = "hub.csrf"; o.Cookie.SameSite = SameSiteMode.Strict; });
-builder.Services.AddSingleton<IStudyStore>(_ => new JsonStudyStore(Environment.GetEnvironmentVariable("HUB_DATA") ?? Path.Combine(builder.Environment.ContentRootPath, ".data", "hub.json")));
+var provider=Environment.GetEnvironmentVariable("HUB_STORAGE_PROVIDER") ?? "Json";
+if(provider is not ("Json" or "SqlServer"))throw new InvalidOperationException("Unknown storage provider.");
+builder.Services.AddSingleton<IStudyStore>(_ => provider switch {
+ "Json" => new JsonStudyStore(Environment.GetEnvironmentVariable("HUB_DATA") ?? Path.Combine(builder.Environment.ContentRootPath, ".data", "hub.json")),
+ "SqlServer" => new SqlStudyStore(Environment.GetEnvironmentVariable("HUB_SQL_CONNECTION") ?? ""),
+ _ => throw new InvalidOperationException("Unknown storage provider.")
+});
+builder.Services.ConfigureHttpJsonOptions(options => {
+ var resolver=new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver();
+ resolver.Modifiers.Add(info => { if(info.Type==typeof(Study)) {
+  var requests=info.Properties.FirstOrDefault(p=>p.Name=="requests"); if(requests is not null)requests.ShouldSerialize=(_,_)=>false;
+  var files=info.Properties.FirstOrDefault(p=>p.Name=="files"); if(files is not null)files.Get=obj=>{ var study=(Study)obj; return study.Files.Where(file=>!file.Deleted&&(file.ParentId is null||study.Items.Any(item=>item.Id==file.ParentId&&!item.Deleted))).ToList(); };
+ } });
+ options.SerializerOptions.TypeInfoResolver=resolver;
+});
 var app = builder.Build();
+if(args.Contains("--initialize-synthetic-sql")) {
+ if(provider!="SqlServer")throw new InvalidOperationException("Explicit SQL initialization requires SqlServer provider.");
+ ((SqlStudyStore)app.Services.GetRequiredService<IStudyStore>()).InitializeSyntheticDemo(builder.Environment.EnvironmentName,Environment.GetEnvironmentVariable("HUB_DEMO_ENABLED")=="true");
+ return;
+}
 app.Use(async (ctx, next) => {
  if (ctx.Connection.RemoteIpAddress is not { } ip || !IPAddress.IsLoopback(ip) || !(ctx.Request.Host.Host is "127.0.0.1" or "localhost" or "::1")) { ctx.Response.StatusCode=403; return; }
  ctx.Response.Headers["X-Content-Type-Options"]="nosniff";
@@ -34,10 +53,19 @@ app.MapPost("/api/session", (HttpContext c,SessionInput input) => {
 });
 app.MapGet("/api/studies",(HttpContext c,IStudyStore store)=>store.Read(s=>s.Studies.Where(x=>Access(s,Identity(c),x)).ToArray()));
 app.MapGet("/api/studies/{id}",(string id,HttpContext c,IStudyStore store)=>store.Read<IResult>(s=>s.Studies.FirstOrDefault(x=>x.Id==id && Access(s,Identity(c),x)) is {} study ? Results.Ok(study) : Results.NotFound()));
-app.MapGet("/api/search",(string? q,HttpContext c,IStudyStore store)=>store.Read<IResult>(s=>q?.Length>200 ? Results.BadRequest() : Results.Ok(s.Studies.Where(x=>Access(s,Identity(c),x)).SelectMany(st=>st.Items.Where(i=>!i.Deleted && (i.Title+" "+i.Body).Contains(q??"",StringComparison.OrdinalIgnoreCase)).Select(i=>new {studyId=st.Id,studyTitle=st.Title,item=i})).Take(100))));
+app.MapGet("/api/search",(string? q,HttpContext c,IStudyStore store)=>store.Read<IResult>(s=> {
+ if(q?.Length>200)return Results.BadRequest();
+ var query=q??"";
+ var hits=new List<object>();
+ foreach(var study in s.Studies.Where(study=>Access(s,Identity(c),study))) {
+  hits.AddRange(study.Items.Where(item=>!item.Deleted&&(item.Title+" "+item.Body).Contains(query,StringComparison.OrdinalIgnoreCase)).Select(item=>(object)new {studyId=study.Id,studyTitle=study.Title,item}));
+  hits.AddRange(study.Files.Where(file=>!file.Deleted&&(file.ParentId is null||study.Items.Any(item=>item.Id==file.ParentId&&!item.Deleted))&&file.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).Select(file=>(object)new {studyId=study.Id,studyTitle=study.Title,item=new {id=file.Id,kind="file",title=file.Name,body="File version "+file.Version+" · "+file.Status}}));
+ }
+ return Results.Ok(hits.Take(100));
+}));
 app.MapPost("/api/studies/{id}/items",(string id,ItemInput input,HttpContext c,IStudyStore store)=>store.Change(s=> {
  var study=s.Studies.FirstOrDefault(x=>x.Id==id && Access(s,Identity(c),x)); if(study is null)return Results.NotFound();
- if (!Guid.TryParse(input.RequestId,out _) || !new[]{"document","documentation","discussion","reply","task","decision","idea"}.Contains(input.Kind) || string.IsNullOrWhiteSpace(input.Title) || input.Title.Length>180 || string.IsNullOrWhiteSpace(input.Body) || input.Body.Length>20000) return Results.BadRequest(new {error="Provide a valid kind, title (1–180), body (1–20000), and request identifier."});
+ if (!Guid.TryParse(input.RequestId,out _) || !new[]{"document","documentation","discussion","reply","decision","idea"}.Contains(input.Kind) || string.IsNullOrWhiteSpace(input.Title) || input.Title.Length>180 || string.IsNullOrWhiteSpace(input.Body) || input.Body.Length>20000) return Results.BadRequest(new {error="Provide a valid kind, title (1–180), body (1–20000), and request identifier."});
  var fingerprint=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(input))));
  if(study.Requests.TryGetValue(input.RequestId,out var prior))return prior==fingerprint?Results.Ok(study):Results.Conflict(new {error="Request identifier was already used for a different operation."});
  if(study.Revision!=input.ExpectedRevision)return Results.Conflict(new {error="Study changed. Refresh before retrying; your text has not been saved."});
@@ -67,7 +95,7 @@ app.MapPost("/api/studies/{id}/items/{itemId}/delete",(string id,string itemId,R
  if(st.Requests.TryGetValue(input.RequestId,out var prior))return prior==fingerprint?Results.Ok(st):Results.Conflict();
  if(st.Revision!=input.ExpectedRevision||st.Stage!="Active")return Results.Conflict();
  var index=st.Items.FindIndex(i=>i.Id==itemId&&!i.Deleted);if(index<0)return Results.NotFound();
- st.Items[index]=st.Items[index] with {Deleted=true,Body="[Removed from demo view]"};st.Revision++;st.Requests.Add(input.RequestId,fingerprint);s.Audit.Add(new(Identity(c),"Removed item",st.Id,DateTimeOffset.UtcNow));return Results.Ok(st);
+ st.Items[index]=st.Items[index] with {Deleted=true,Body="[Removed from demo view]",Task=null};st.Revision++;st.Requests.Add(input.RequestId,fingerprint);s.Audit.Add(new(Identity(c),"Removed item",st.Id,DateTimeOffset.UtcNow));return Results.Ok(st);
 }));
 app.MapGet("/api/admin",(HttpContext c,IStudyStore store)=>store.Read<IResult>(s=>Admin(s,Identity(c))?Results.Ok(new {roles=s.Roles,mappings=s.Studies.Select(x=>new {studyId=x.Id,groupId=x.GroupId}),audit=s.Audit,identities=Demo.Identities,groups=Demo.Groups,effectiveAccess=Demo.Identities.Select(u=>new {identity=u.Id,studies=s.Studies.Where(st=>Access(s,u.Id,st)).Select(st=>st.Id)})}):Results.StatusCode(403)));
 app.MapPost("/api/admin/mapping",(MappingInput input,HttpContext c,IStudyStore store)=>store.Change(s=> {
@@ -81,14 +109,16 @@ app.MapPost("/api/admin/role",(RoleInput input,HttpContext c,IStudyStore store)=
  if(input.Identity==Identity(c)&&input.Role!="Administrator")return Results.BadRequest(new {error="Cannot remove your own administrator role."});
  s.Roles[input.Identity]=input.Role;s.Audit.Add(new(Identity(c),"Changed application role",input.Identity,DateTimeOffset.UtcNow));return Results.Ok();
 }));
+app.MapTaskEndpoints(Identity,Access);
+app.MapAttachmentEndpoints(Identity,Access);
 app.MapFallbackToFile("index.html");app.Run();
 record RevisionInput(int ExpectedRevision,string RequestId);
 record SessionInput(string Identity);record MappingInput(string StudyId,string GroupId);record RoleInput(string Identity,string Role);
 record ItemInput(string Kind,string Title,string Body,string? ParentId,string? DocumentId,int ExpectedRevision,string RequestId);
 record StageInput(string Stage,int ExpectedRevision,string RequestId);
-public record Item(string Id,string Kind,string Title,string Body,string? ParentId,string? DocumentId,int Version,string Author,DateTimeOffset CreatedAt,bool Deleted=false);
+public record Item(string Id,string Kind,string Title,string Body,string? ParentId,string? DocumentId,int Version,string Author,DateTimeOffset CreatedAt,bool Deleted=false) { public TaskDetails? Task {get;init;} }
 public record Audit(string Actor,string Action,string Target,DateTimeOffset At);
-public class Study {public string Id{get;set;}="";public string Title{get;set;}="";public string Summary{get;set;}="";public string Stage{get;set;}="Active";public string GroupId{get;set;}="";public int Revision{get;set;}=1;public List<Item> Items{get;set;}=[];public Dictionary<string,string> Requests{get;set;}=[];}
+public class Study {public string Id{get;set;}="";public string Title{get;set;}="";public string Summary{get;set;}="";public string Stage{get;set;}="Active";public string GroupId{get;set;}="";public int Revision{get;set;}=1;public List<Item> Items{get;set;}=[];public List<StoredFile> Files{get;set;}=[];public Dictionary<string,string> Requests{get;set;}=[];}
 public class State {public List<Study> Studies{get;set;}=[];public Dictionary<string,string> Roles{get;set;}=new(){{"admin","Administrator"}};public List<Audit> Audit{get;set;}=[];}
 public interface IStudyStore { T Read<T>(Func<State,T> read); IResult Change(Func<State,IResult> change); }
 public sealed class JsonStudyStore:IStudyStore {

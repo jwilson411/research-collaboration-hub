@@ -2,45 +2,49 @@
 
 A local, synthetic research-study collaboration preview built with ASP.NET Core 10 and the U.S. Web Design System. It is not an official government service. No actual research or patient data belongs in this demo.
 
-## Local quick start
+## Morning quick start
 
-Check out `feature/local-study-hub` for this draft implementation. Install a supported .NET 10 SDK and Node.js LTS. From this directory:
+Check out `feature/local-study-hub`. Install a supported .NET 10 SDK. Built USWDS assets are included, so Node.js is only required when rebuilding the frontend.
+
+```sh
+./scripts/start-demo.sh
+```
+
+Windows PowerShell: `./scripts/Start-LocalPreview.ps1`.
+
+Open http://127.0.0.1:5080 **on the development computer**. A phone's localhost does not reach that computer. The launcher explicitly enables Development and the synthetic file-release policy. Set `HUB_DEMO_FILE_RELEASE=false` to quarantine every upload. Stop with Ctrl+C. There are no LAN listeners, tunnels, hosted CI, AI requests or messaging integrations.
+
+The application requires explicit demo enablement and Development, validates loopback remote address and Host, and refuses Production startup. Any local visitor can select a synthetic identity: this is a demonstration mechanism, not production authentication. Alex has Atlas access, Sam has Beacon access, and Morgan manages application roles/mappings without automatic study access. Synthetic group membership is immutable and does not become an editable roster.
+
+## Five-minute walkthrough
+
+1. As Alex, open Atlas. Review its documentation, discussion and latest document reference. The preview does not imply a formally accepted protocol designation.
+2. Open Tasks & decisions. Create a task with Alex as assignee, a due date, status and document/discussion evidence. Edit it and inspect the retained earlier revision.
+3. Open Document library. Upload a small `.txt` file and download it. Upload `fixtures/demo-attachment.png` to demonstrate a verified-byte binary round trip. Upload a PDF to see quarantine: its download remains blocked. Use New version to retain a file's earlier version.
+4. Attach a file to a discussion/reply. A deleted parent makes its attachment unavailable. Record an idea and promote it into a linked decision.
+5. Switch to Sam: Atlas URLs, search and downloads are inaccessible. Reopen Beacon to continue its historical record. Switch to Morgan to inspect roles, mapped groups, effective access and audit.
+6. Submit edits from two tabs. A stale submission is rejected and its draft stays in the form. Stop/restart: saved state persists.
+
+## Persistence and attachments
+
+The default single-process JSON provider stores metadata in `.data/hub.json`; `HUB_DATA` overrides it. Immutable file bytes live in sibling `.hub-files`, **outside the application directory**, or an explicit `HUB_FILES` directory. Back up metadata and blobs together while the preview is stopped. Do not store attachment bytes in webroot or the application directory. Ignored local data and screenshots are not published.
+
+Uploads are limited to 512 KiB decoded and 1 MiB requests. Allowed types are `.txt`, `.pdf`, `.png`, `.jpg`; filenames, UTF-8 text or signatures are validated. All uploaded bytes get SHA-256 integrity metadata and generated storage names. Downloads check current study membership, parent/deletion state, release policy and checksum, and force attachment disposition with `application/octet-stream`.
+
+**There is no malware scanner.** The optional synthetic policy releases validated text and only the exact bundled PNG. Other binaries remain quarantined. Deleted and interrupted/unreferenced blobs are not automatically destroyed: reviewed retention and orphan cleanup are future work.
+
+`IStudyStore` also has a bounded SQL Server snapshot adapter with explicit schema setup and synthetic import command. It is not a normalized production data model, and was not tested against a live SQL Server here. See [storage](docs/STORAGE.md) and the [IIS deployment gate](docs/IIS.md).
+
+## Build and checks
 
 ```sh
 npm ci
 npm run build
-HUB_DEMO_ENABLED=true ASPNETCORE_ENVIRONMENT=Development dotnet run
-```
-
-Open http://127.0.0.1:5080 **on the development computer**. This loopback address does not open the computer's preview from a phone. No LAN listener, tunnel, public hosting, paid CI, AI requests, or messaging integration is provided.
-
-PowerShell equivalent:
-
-```powershell
-$env:HUB_DEMO_ENABLED = 'true'
-$env:ASPNETCORE_ENVIRONMENT = 'Development'
-dotnet run
-```
-
-The demo requires both explicit enablement and Development. It refuses other startup modes, verifies the remote address and Host, and binds only loopback. Synthetic identities can be selected by any local visitor: this is a demonstration mechanism, not real authentication. Alex has Atlas access, Sam has Beacon access, and Morgan administers mappings and application roles without an automatic study-content bypass. Group membership is an immutable synthetic fixture, not an editable roster.
-
-Data persists to `.data/hub.json`; set `HUB_DATA` to an alternate local file for isolated tests. Back up while stopped. The single-process JSON provider uses atomic replacement and an `IStudyStore` boundary. It is not a SQL Server provider, distributed database, or production durability guarantee.
-
-## Walkthrough
-
-1. Open My Studies as Alex. Review Atlas's protocol, orientation and open question.
-2. Create a documentation revision, discussion reply, decision, next action or idea. Refresh to see persisted changes.
-3. Open Sam's session. Atlas URLs, search hits and downloads are unavailable. Reopen Beacon and continue its historical record.
-4. Select Morgan. Inspect application roles, directory-group mappings, effective access and audit. Admin privileges alone do not disclose study content.
-5. Submit stale changes from two tabs: the second request must be rejected rather than silently overwrite work.
-
-See [feature matrix](docs/FEATURES.md), [IIS implementation gate](docs/IIS.md), and [synthetic migration rehearsal](docs/MIGRATION.md). This preview is not production-ready or an accessibility compliance certification.
-
-## Validation
-
-```sh
+npm run check:frontend
 dotnet build
 python3 -m unittest discover -s tests -v
 ```
 
-Tests that launch the application require `dotnet` on PATH (or set `DOTNET` to its executable). Stop the preview first: the HTTP suite owns loopback port 5080. No hosted CI is configured.
+The HTTP suites require `dotnet` on PATH (or set `DOTNET` to its executable), and exclusively own loopback port 5080. Stop the preview first. The browser smoke script runs against a disposable, already-running demo with a separately installed Playwright/Chromium; see its opening instructions. No hosted CI is configured.
+
+See [feature matrix](docs/FEATURES.md), [synthetic migration rehearsal](docs/MIGRATION.md) and [next milestones](docs/NEXT.md). This preview is not production-ready or an accessibility compliance certification.
