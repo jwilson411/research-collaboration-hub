@@ -1,0 +1,13 @@
+import * as sass from 'sass';
+import postcss from 'postcss';
+import autoprefixer from 'autoprefixer';
+import {mkdir, writeFile, cp, copyFile} from 'node:fs/promises';
+const destination='wwwroot/vendor/uswds';
+await mkdir(`${destination}/css`,{recursive:true});
+const compiled=sass.compile('assets/styles.scss',{loadPaths:['node_modules/@uswds/uswds/packages'],style:'compressed',quietDeps:true,silenceDeprecations:['import','global-builtin','color-functions','if-function']});
+const css=await postcss([autoprefixer]).process(compiled.css,{from:undefined});
+await writeFile(`${destination}/css/uswds.css`,css.css);
+await cp('node_modules/@uswds/uswds/dist/fonts',`${destination}/fonts`,{recursive:true});
+await cp('node_modules/@uswds/uswds/dist/img',`${destination}/img`,{recursive:true});
+await copyFile('node_modules/@uswds/uswds/LICENSE.md',`${destination}/LICENSE.md`);
+console.log('Built USWDS CSS from Sass and copied local fonts/images.');
