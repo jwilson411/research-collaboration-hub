@@ -12,13 +12,13 @@ Handoffs capture decision status and exact evidence at capture time. Later super
 
 ## Starting documents
 
-Documentation offers three bundled outlines: study protocol, handoff notes and collaborator orientation. Choosing one fills editable title/body fields. Saving creates a new Draft document family with template ID/title provenance; subsequent versions retain the origin. It neither accepts the document nor selects the current protocol. These are useful starting outlines, not a governed or versioned template catalog.
+Documentation offers three bundled outlines: study protocol, handoff notes and collaborator orientation. Choosing one fills editable title/body fields. Saving creates a new Draft document family with template ID/title provenance; subsequent versions retain the origin. It neither accepts the document nor selects the current protocol. The study lead can add definitions and append immutable template versions with a reason. Documents pin the exact study-scoped definition ID, version and digest; updating the catalog never rewrites existing documents. The bundled definitions are frozen on first use. These local controls do not establish organizational catalog approval.
 
 ## Resource pointers
 
 Record a local description or HTTP(S) URL, a current study-member owner, the source, and a past/current verification date. The app never fetches the URL or asserts its accuracy. Browser links open only after a user activates them. Credentials in URLs and executable/file schemes are rejected. An older verification date is a visual prompt to check the pointer, not a background monitoring service.
 
-Pointers are create-only records in this milestone. Replace an outdated pointer with a newly verified record and remove the old one where retention policy allows; there is no automatic refresh or governed attestation workflow. Explicit handoffs can capture a pointer and its metadata. Removal masks that captured source on subsequent views.
+Use Replace to append revised metadata or Reverify to record a new contributor-entered verification date and reason. Both retain exact prior records and prevent branching from an outdated version. Current pointers and retained history are separate; exact historical links expand and focus the cited version. Handoffs include the exact predecessor chain. Retained chains cannot be deleted through the generic removal action. There is no automatic fetch, monitoring or organizational attestation workflow.
 
 ## Morning walkthrough
 
@@ -35,3 +35,10 @@ Independent review found that the mixed task/decision feed obscured current guid
 Template creation goes directly to the document library and labels its Draft origin. Resource metadata distinguishes a contributor-entered verification date from any application check. Captures label historical decision state explicitly. Document and file families now keep relevant current, accepted/released and designated protocol versions visible while placing earlier versions in native disclosure controls. Exact historical links expand the relevant history and focus the cited record.
 
 Fresh synthetic orientation content uses separately spaced, semantic numbered steps. Existing saved document bodies are retained. The independent browser review verified historical disclosure navigation, mobile layouts and the decision, template and resource flows without a blocking usability defect.
+
+## Version and search walkthrough
+
+1. As Riley, open Documentation, manage a template, and append a definition with a reason. Inspect retained versions.
+2. As Alex, use an exact template version to create a Draft. Confirm its provenance remains fixed after a later catalog update.
+3. Create a resource pointer, reverify it, then replace it. Inspect the original metadata in retained history and capture the newest version in a handoff.
+4. Search by a task status or displayed owner name, then narrow by study and record type. Search retains exact historical record links, excludes removed ancestors, and never indexes file bytes or prior mutable task bodies.

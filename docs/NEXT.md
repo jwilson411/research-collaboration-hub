@@ -2,19 +2,22 @@
 
 ## Next useful local milestone
 
-The [requirements evidence matrix](REQUIREMENTS-MATRIX.md) is the basis for prioritization. The highest-value remaining local gap is import exception ownership and disposition: add assigned owners, an immutable resolution trail, guarded retry, and exportable reconciliation receipts. Acceptance should prove that every synthetic source record has an outcome, quarantined material remains inaccessible until resolved, and repeated resolution cannot duplicate or overwrite protected target work (CAP-47–54).
+The [requirements evidence matrix](REQUIREMENTS-MATRIX.md) is the basis for prioritization. Import exceptions now have owners, immutable review/disposition history and batch receipts; template definitions and resource pointer replacements retain exact versions; search now filters by study/type and exposes selected metadata. These local capabilities do not complete source inventory, organizational governance or production acceptance.
 
-Next, add resource replacement/reverification history and versioned template definitions without changing existing documents or captures (CAP-03, CAP-08). Search coverage is now explicit and paginated; future work can add agreed metadata filters and migrated-link resolution with denied/deleted-link tests (CAP-21, CAP-26–27, CAP-54). A synthetic idempotent provisioning seam can follow, keeping approval and real membership outside the application (CAP-10).
+The next useful application seam is synthetic workspace provisioning with stable study identifiers, idempotent requests, validated group mapping and failure isolation (CAP-10). It must not introduce a membership roster, create directory groups or imply external study approval.
+
+In parallel planning, define source/target write ownership and rehearse migration rollback that protects target edits. Add source-link resolution and evidence that every in-scope source record is accounted for across batches; existing receipts cover submitted batches only (CAP-47–54). Search can extend to agreed owner/date filters and remaining metadata, with exact-link tests for renamed and migrated records (CAP-21, CAP-26–27, CAP-54). Structured milestones and blockers remain a coordination gap (CAP-02).
 
 ## Policy-dependent local rehearsals
 
 - Define retention/hold semantics before building disposal; test mutation, import and cleanup paths together (CAP-39).
-- Rehearse migration rollback that preserves target-side edits separately from the stopped JSON/blob backup restore (CAP-53).
+- Define template review/retirement and resource verification responsibility before extending the local lead-managed catalog and contributor attestations (CAP-03, CAP-08).
+- Rehearse migration rollback separately from stopped JSON/blob backup restore (CAP-53).
 - Replace the synthetic release demonstration with an approved scanner/result lifecycle, quotas and reviewed orphan accounting only when its policy and execution boundary are available (CAP-22).
 
 ## Production gates that remain separate
 
-- Exercise the SQL snapshot adapter against an approved disposable SQL Server: concurrency, failure ambiguity, schema, restart and recovery. It is still a bounded single-row preview adapter; normalize entities before scale claims.
+- Exercise the SQL snapshot adapter against an approved disposable SQL Server: concurrency, failure ambiguity, schema, restart and recovery. It remains a bounded single-row preview adapter; normalize entities before scale claims.
 - Implement the approved production identity adapter using stable group SIDs, authoritative membership, tested revocation/outage behavior and explicit IIS registration. Keep Production blocked meanwhile.
 - Validate Windows/IIS, application subpaths, persisted Data Protection keys, keyboard and screen-reader journeys, deployment rollback and operational recovery on the approved target.
 

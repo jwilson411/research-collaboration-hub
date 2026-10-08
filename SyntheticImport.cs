@@ -7,9 +7,14 @@ public record SourceProvenance(string SourceStudyId, string SourceId, int Source
 public record ImportEntry(string SourceStudyId, string SourceId, int SourceRevision, string Fingerprint,
     string TargetId, string Kind, string TargetFingerprint, bool Deleted, SourceProvenance Source,
     List<SourceProvenance> History);
-public record ImportOutcome(string SourceId, string Status, string[] Reasons, string? TargetId);
+public record ImportOutcome(string SourceId, string Status, string[] Reasons, string? TargetId,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? SourceStudyId = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] int? SourceRevision = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? SourceKind = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? SourceFingerprint = null);
 public record ImportReport(string Id, string? RequestId, DateTimeOffset At, bool Applied, int StudyRevision,
-    int InputCount, Dictionary<string, int> Counts, List<ImportOutcome> Outcomes, string ManifestSha256);
+    int InputCount, Dictionary<string, int> Counts, List<ImportOutcome> Outcomes, string ManifestSha256,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Sha256 = null);
 public record ImportPreviewInput(JsonElement Manifest);
 public record ImportApplyInput(JsonElement Manifest, int ExpectedRevision, string RequestId);
 
@@ -28,16 +33,18 @@ public static class SyntheticImportEndpoints
             Safe(() => store.Read<IResult>(state => {
                 var study = Authorized(state, id, identity(context));
                 if (study is null) return Results.NotFound();
+                if (!ImportReviewRules.Valid(study)) return Results.Problem("Import review integrity check failed.", statusCode: 503);
                 var plan = Plan(study, input.Manifest, files);
                 return Results.Ok(Report(study, plan, null, false));
             })));
         app.MapGet("/api/studies/{id}/imports", (string id, HttpContext context, IStudyStore store) =>
             store.Read<IResult>(state => Authorized(state, id, identity(context)) is { } study
-                ? Results.Ok(study.ImportReports) : Results.NotFound()));
+                ? ImportReviewRules.Valid(study) ? Results.Ok(study.ImportReports) : Results.Problem("Import review integrity check failed.", statusCode: 503) : Results.NotFound()));
         app.MapPost("/api/studies/{id}/imports/apply", (string id, ImportApplyInput input, HttpContext context, IStudyStore store, AttachmentStorage files) =>
             Safe(() => store.Change(state => {
                 var study = Authorized(state, id, identity(context));
                 if (study is null) return Results.NotFound();
+                if (!ImportReviewRules.Valid(study)) return Results.Problem("Import review integrity check failed.", statusCode: 503);
                 if (!Guid.TryParse(input.RequestId, out _)) return Results.BadRequest(new { error = "A request identifier is required." });
                 ValidateManifest(input.Manifest);
                 var operation = Hash(new { operation = "synthetic-import", manifest = input.Manifest, input.ExpectedRevision });
@@ -129,6 +136,9 @@ public static class SyntheticImportEndpoints
             }
             if (old is not null)
             {
+                if (c.Deleted && c.Revision > old.SourceRevision && study.Items.Any(item => item.Kind == "resource" && !item.Deleted &&
+                    (item.Resource?.VersionDetails is not null || ResourceRules.HasSuccessor(study, item.Id)) && EvidenceRules.HasAncestor(study, item.ParentId, old.TargetId)))
+                    c.Reasons.Add("retained_resource_history_ancestor_cannot_be_removed");
                 if (c.Revision > old.SourceRevision && c.Kind == "decision" && study.Items.FirstOrDefault(i => i.Id == old.TargetId) is { } existingDecision &&
                     DecisionRules.ImportChangeError(study, existingDecision, c.Deleted) is not null) c.Reasons.Add("decision_history_requires_typed_supersession_or_retention");
                 if (c.Deleted && c.Revision > old.SourceRevision && c.Kind is "version" or "attachment" && EvidenceRules.ProtectedByAcceptedDocument(study, old.TargetId)) c.Reasons.Add("accepted_document_evidence_cannot_be_removed");
@@ -256,9 +266,10 @@ public static class SyntheticImportEndpoints
 
     static ImportReport Report(Study study, ImportPlan plan, string? requestId, bool applied)
     {
-        var outcomes = plan.Candidates.Select(c => new ImportOutcome(c.SourceId, c.Status, c.Reasons.Distinct().Order().ToArray(), c.Status == "quarantined" ? null : c.TargetId)).OrderBy(o => o.SourceId).ToList();
+        var outcomes = plan.Candidates.Select(c => new ImportOutcome(c.SourceId, c.Status, c.Reasons.Distinct().Order().ToArray(), c.Status == "quarantined" ? null : c.TargetId, c.SourceStudyId, c.Revision, c.Kind, c.Fingerprint)).OrderBy(o => o.SourceId).ToList();
         var counts = new[] { "imported", "unchanged", "stale_ignored", "deleted", "quarantined" }.ToDictionary(s => s, s => outcomes.Count(o => o.Status == s));
-        return new(applied ? Guid.NewGuid().ToString() : "preview", requestId, DateTimeOffset.UtcNow, applied, study.Revision, outcomes.Count, counts, outcomes, plan.Fingerprint);
+        var report = new ImportReport(applied ? Guid.NewGuid().ToString() : "preview", requestId, DateTimeOffset.UtcNow, applied, study.Revision, outcomes.Count, counts, outcomes, plan.Fingerprint);
+        return report with { Sha256 = ImportReviewRules.ReportHash(report) };
     }
     static string TargetFingerprint(Study study, string id, string kind) => Hash(new {
         item = kind is "attachment" or "version" ? null : study.Items.FirstOrDefault(i => i.Id == id),

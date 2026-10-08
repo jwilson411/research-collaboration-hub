@@ -95,6 +95,7 @@ public static class HandoffEndpoints
                 if (item.ParentId is not null) items.Add(item.ParentId);
                 if (item.DocumentId is not null) items.Add(item.DocumentId);
                 if (item.Decision is not null) { foreach(var source in item.Decision.ItemIds) items.Add(source); foreach(var source in item.Decision.FileIds) files.Add(source); if(item.Decision.SupersedesId is not null) items.Add(item.Decision.SupersedesId); }
+                if (item.Resource?.VersionDetails is {} resourceVersion) items.Add(resourceVersion.PreviousVersionId);
                 if (item.BoardDecision is not null) items.Add(item.BoardDecision.IdeaVersionId);
                 foreach (var reference in item.Task?.Links ?? []) items.Add(reference);
                 foreach (var reference in item.FileIds.Concat(item.Task?.FileLinks ?? [])) files.Add(reference);

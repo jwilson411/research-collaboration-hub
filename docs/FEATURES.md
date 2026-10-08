@@ -13,14 +13,14 @@ See the [full requirements evidence matrix](REQUIREMENTS-MATRIX.md) for the comp
 | Handoffs | Immutable bounded captures of exact evidence, current tasks, decisions and questions; current-access/removal projection | Production recovery, reviewed export/retention policy |
 | Brainstorming | Named persistent sessions, immutable idea versions, keyboard ordering, session history, readable/export summary and exact decision links | Screen-reader acceptance and richer collaboration policies |
 | Decisions | Immutable rationale/alternatives, owner/date, single-successor supersession, current/history views and exact evidence | Approved production decision/retention policy |
-| Templates/resources | Editable bundled Draft outlines with provenance; owned resource pointers with source/date, no fetch | Governed template catalog and resource verification lifecycle |
+| Templates/resources | Study-scoped immutable template definitions pinned in Draft provenance; resource replacement/reverification chains with source/date and exact history, no fetch | Approved catalog governance and actual destination verification |
 | Onboarding | Private context-bound checklist, saved completion/time, resume link and synthetic contact | Real directory contacts and approved orientation policy |
 | Lifecycle | Active/Paused/Closed with reopening and retained history | Approved lifecycle role matrix |
-| Search/download | Server-side membership checks; deleted content unavailable | Production index and revocation tests |
+| Search/download | Study/type filters, bounded pagination and snippets across live records and filenames; useful task/owner/resource metadata; server-side membership and ancestor checks | Production index, binary extraction and migrated-link resolution |
 | Administration | Roles, group mappings, effective access, audited configuration revisions and replay protection | Real SIDs, immutable audit and approved separation of duties |
 | Persistence | Atomic JSON for one process; separate SQL Server transaction adapter | Live SQL tests, normalized model, capacity and recovery |
 | Demo recovery | Stopped synthetic JSON and referenced blobs; bounded verified archive, fresh isolated restore, source-preservation rehearsal | Windows, live SQL, crash/power-loss and production recovery |
-| Import | Connected preview/apply/reports with provenance, dependency checks, idempotency and quarantine; independent offline CLI retained | Live extraction, wave rollback and production migration acceptance |
+| Import | Connected preview/apply with provenance, dependency checks and quarantine; assigned operator disposition, immutable review history and batch receipts; independent offline CLI retained | Live extraction, actual inventory accounting, wave rollback and production migration acceptance |
 | AI/messaging | Disabled; no outgoing integration calls | Separate authorization and implementation |
 | IIS | Publish/readiness scripts, configuration template, documented gate | Windows/IIS/domain execution remains untested |
 

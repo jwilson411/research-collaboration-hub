@@ -66,7 +66,7 @@ The HTTP suites require `dotnet` on PATH (or set `DOTNET` to its executable), an
 
 See [feature matrix](docs/FEATURES.md), [synthetic migration rehearsal](docs/MIGRATION.md) and [next milestones](docs/NEXT.md). This preview is not production-ready or an accessibility compliance certification.
 
-Decision supersession, editable document outlines and resource pointers: [walkthrough and limits](docs/DECISIONS-RESOURCES.md).
+Decision supersession, versioned templates and resource history: [walkthrough and limits](docs/DECISIONS-RESOURCES.md).
 
 Stopped synthetic JSON/blob backup and isolated restore: [recovery procedure](docs/RECOVERY.md).
 
